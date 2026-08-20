@@ -1,26 +1,37 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-base: #0b0e14;
+  --color-surface: #10141d;
+  --color-surface-2: #0f172a;
+  --color-edge: #1e293b;
+  --color-accent: #f5c044;
+  --color-accent-hover: #facc15;
+  --color-muted: #94a3b8;
+  --color-faint: #475569;
+  --color-success: #34d399;
+  --color-danger: #fb7185;
+  --color-info: #22d3ee;
+  --color-violet: #a78bfa;
+  --color-orange: #fb923c;
+  --font-sans: var(--font-inter);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-base);
+  color: #e2e8f0;
+  font-family: var(--font-inter), system-ui, sans-serif;
+}
+
+/* Scrollbar halus ala dark SaaS */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: #1e293b;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
 }

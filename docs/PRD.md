@@ -4,7 +4,11 @@
 **Tanggal**: 6 Agustus 2026
 **Status**: 🔵 Draft — menunggu review Bang Handry
 **Owner**: Bang Handry
-**Tech Stack**: Next.js 16.3.0 (Turbopack) · React 19.2 · Tailwind 4 · TypeScript · SQLite (Prisma/Drizzle) · WhatsApp Gateway (Baileys) · Scheduler (in-process)
+**Tech Stack**: Next.js 16.3.0 (Turbopack) · React 19.2 · Tailwind 4 · TypeScript · **SQLite + Drizzle ORM** · WhatsApp Bridge (Baileys, service terpisah di VPS) · Scheduler (in-process)
+
+**Keputusan Arsitektur (v0.3)**: WA Bridge = service mandiri yang jalan 24/7 di VPS `solusiadmin-core-vps`. Komunikasi dengan Mina-UI via **REST (kirim pesan) + Webhook (event masuk)**. MCP disimpan untuk fase CS bot AI (Hermes → bridge sebagai tool).
+
+**Positioning (v0.3)**: Mina-UI = **backend MVP pribadi Bang Handry** (single-user, self-hosted, data 100% lokal). **BUKAN SaaS multi-tenant.** Konsep "banyak pengguna masing-masing connect nomor WA mereka" = red ocean (Fonnte, Wablas dll) → **ditunda, bukan fokus**. Arsitektur bridge multi-number-ready tetap dijaga biar opsi ini gak tertutup kalau nanti mau dieksplor.
 
 ---
 
@@ -187,7 +191,7 @@ Pasar CRM+WA udah ramai (Fonnte, Wablas, dll), tapi mayoritas cuma **blast tools
 │  └──────┬──────┘  └───────────┬──────────────┘  │
 │         │                     │                 │
 │  ┌──────▼─────────────────────▼──────────────┐  │
-│  │ SQLite (Prisma/Drizzle)                   │  │
+│  │ SQLite (Drizzle ORM)                      │  │
 │  │ contacts · messages · deals · tasks       │  │
 │  │ sequences · steps · runs · unsubscribes   │  │
 │  └───────────────────────────────────────────┘  │
@@ -199,6 +203,37 @@ Pasar CRM+WA udah ramai (Fonnte, Wablas, dll), tapi mayoritas cuma **blast tools
 - **Follow-up Scheduler**: loop tiap menit → cari step yang `due_at <= now` → kirim via gateway → update status
 - **Safety Engine**: validasi jam kirim, delay random, max per hari, unsubscribe check — **semua kirim lewat sini, gak ada bypass**
 - **DB**: SQLite (file-based) — simpel, backup = copy file
+
+### Arsitektur WA Bridge (v0.3)
+
+```
+VPS solusiadmin-core-vps (WA harus hidup 24/7)
+┌──────────────────────────────────────────┐
+│  WA BRIDGE (service mandiri, Baileys)     │
+│  • QR connect — scan sekali               │
+│  • Session persist (aman restart)         │
+│  • REST API: POST /send, GET /status      │
+│  • Webhook keluar → event ke Mina-UI      │
+└───────────────┬──────────────────────────┘
+                │ pesan masuk / status kirim (Webhook)
+                ▼
+        MINA-UI (Next.js + SQLite)
+        • REST client → bridge (kirim pesan)
+        • Webhook handler → simpan + trigger FU engine
+```
+
+**Alur komunikasi:**
+1. **Kirim pesan** (balas chat / follow-up) → Mina-UI panggil `POST /send` di bridge
+2. **Pesan masuk** → bridge kirim webhook ke Mina-UI → simpan ke DB + trigger follow-up engine
+3. **QR connect** → halaman Settings Mina-UI tampilkan QR dari bridge → scan sekali → session tersimpan di VPS
+
+**Kenapa REST + Webhook (bukan MCP untuk jalur pesan):**
+- MCP = protokol untuk agent AI manggil tools (Hermes → bridge sebagai CS bot). Bukan protokol real-time chat.
+- REST + Webhook = pola standar, ringan, mudah di-debug, semua bahasa dukung.
+- Bridge terpisah → restart app/deploy gak matiin koneksi WA.
+- Bridge satu → banyak konsumen (Mina-UI, nanti Hermes CS bot, dll).
+
+**Fase CS Bot AI (nanti):** Hermes di VPS nyambung ke bridge via **MCP** — agent AI baca chat & balas otomatis. Satu bridge, banyak konsumen.
 
 ---
 
@@ -290,12 +325,68 @@ interface Unsubscribe {
 
 ## 8. UI/UX
 
-- **Dark theme** (zinc-950, lanjut dari existing)
-- **Sidebar nav**: Dashboard, Inbox, Contacts, Follow-up, Deals, Tasks, Automation, Reports, Settings
-- **Inbox**: 2 kolom (list chat kiri, conversation kanan) — kayak WA Web
-- **Follow-up page**: 2 view — (1) Sequence editor (steps & template), (2) Pipeline progress (kontak per status FU)
-- **Deals**: kanban drag & drop
-- Responsive: mobile bisa buka (fokus desktop)
+> **SSOT UI**: `D:\DOCUMENT\Mina-UI-SSOT\` — berisi style guide + 5 gambar referensi (dashboard, login PIN, users, models, logs).
+> Referensi visual: **Mina Forge** (DapurMina) — dashboard dark mode dengan aksen kuning-emas.
+
+### 8.1 Style Guide — Dark Mode SaaS (referensi Mina Forge)
+
+| Token | Value | Fungsi |
+|---|---|---|
+| `bg-base` | `#0B0E14` | Background utama |
+| `bg-card` | `#10141D` | Background kartu/panel |
+| `border-card` | `#1E293B` | Border kartu (1px) |
+| `accent` | `#F5C044` | Kuning-emas — primary, CTA, active state |
+| `accent-hover` | `#FACC15` | Kuning lebih terang — hover |
+| `text-primary` | `#E2E8F0` | Teks utama |
+| `text-muted` | `#94A3B8` | Teks sekunder/keterangan |
+| `text-faint` | `#475569` | Teks tersier/footer |
+| `success` | `#34D399` | Status OK / aktif |
+| `danger` | `#FB7185` | Hapus / suspend / error |
+| `info` | `#22D3EE` | Info / link |
+| `violet` | `#A78BFA` | Aksen sekunder (ikon, badge) |
+| `orange` | `#FB923C` | Aksen sekunder (ikon, warning) |
+
+### 8.2 Tipografi & Komponen
+
+- **Font**: Inter (sans-serif), fallback system-ui
+- **Angka KPI**: `font-weight: 800`, ukuran besar
+- **Label kecil**: uppercase, `letter-spacing`, 11-12px
+- **Card**: `bg-card`, border `border-card` 1px, radius 12px, shadow subtle
+- **Button primary**: `bg-accent` kuning, teks hitam `#0B0E14`, font-bold
+- **Button danger**: `bg-danger/10`, teks danger, border danger/30
+- **Input**: bg `#0f172a`, border `#1E293B`, radius 8px, focus ring accent
+- **Badge**: rounded-full, 10-11px, padding 2-6px
+- **Table**: borderless, hover `white/2`, header uppercase muted
+- **Sidebar**: `bg-base`, border-right `#1E293B`, active = accent bg + indicator
+- **Filter pills**: rounded-full, active = accent bg
+- **Icon**: line/outline style, colorful (Font Awesome / Lucide)
+
+### 8.3 Layout
+- **Sidebar kiri (fixed, 240px)**: logo brand, nav, profile/logout di bawah
+- **Header**: judul halaman + subtitle (tanggal/breadcrumb) + aksi
+- **Konten utama**: grid — KPI cards row, chart row (line + donut), form + tabel
+
+### 8.4 Halaman (Frontend Statis — Tahap Ini)
+
+| Halaman | Route | Komponen Utama |
+|---|---|---|
+| Login (2 langkah) | `/login` | Logo perisai, stepper, input PIN, tombol verifikasi |
+| Dashboard | `/` | KPI cards (4), line chart, donut chart |
+| Contacts | `/contacts` | Search + filter pills, tabel (nama, WA, status FU, aksi) |
+| Follow-up | `/followup` | Stats row, form sequence editor + tabel progress |
+| Inbox | `/inbox` | 2 kolom: list chat + conversation (kayak WA Web) |
+| Deals | `/deals` | Kanban drag & drop |
+| Tasks | `/tasks` | Tabel task + status |
+| Automation | `/automation` | Tabel rules keyword → reply |
+| Reports | `/reports` | Chart + summary |
+| Logs | `/logs` | Filter pills, tabel (waktu, aksi, detail, status, IP) |
+| Pengaturan | `/settings` | Form settings + koneksi WA QR |
+
+### 8.5 Halaman Login (2 Langkah)
+- **Langkah 1 — Master PIN**: input PIN → verifikasi
+- **Langkah 2**: verifikasi lanjutan (sesuai desain)
+- Menampilkan sisa percobaan ("Percobaan ke-2/5")
+- Saat lockout: form disabled + hitung mundur
 
 ---
 
@@ -317,16 +408,34 @@ interface Unsubscribe {
 |-------|-------------|
 | Performance | API < 2s; chat load < 1s |
 | Reliability | Gateway restart → auto-reconnect; scheduler catch-up setelah mati |
-| Security | v1: bind localhost only; session WA lokal |
+| Security | Auth: login 5x salah → lockout (cooldown 5 menit, hitung mundur, counter reset); v1: bind localhost only; session WA di VPS (bridge) |
 | Testing | lint 0 error; build sukses; smoke test tiap API |
 | Data | SQLite auto-backup harian |
+
+### 10.1 Kebijakan Login (Auth & Security)
+
+| Aturan | Nilai |
+|---|---|
+| Maksimal salah login | 5x per sesi |
+| Setelah 5x gagal | Lockout sementara (cooldown) |
+| Durasi cooldown | 5 menit (bisa dikonfigurasi) |
+| Selama lockout | Form disabled + hitung mundur tampil |
+| Setelah cooldown | Counter reset → bisa coba lagi |
+| Login sukses | Counter ikut reset |
 
 ---
 
 ## 11. Milestones
 
+### Phase 0 (Frontend Statis) — 🔵 SEDANG DIKERJAKAN
+- Desain & SSOT UI dikumpulkan (`D:\DOCUMENT\Mina-UI-SSOT\`)
+- **Frontend statis** (tanpa flow/backend): login PIN, dashboard shell + sidebar, contacts, follow-up, inbox, deals, tasks, automation, reports, logs, settings
+- Semua halaman pake **data dummy/static** — belum nyambung DB
+- Tujuan: Bang Handry lihat & setujui desain dulu, baru lanjut flow
+
 ### Phase 1 (MVP) — P0
-- WA Connection (QR login + session persist)
+- **Auth & Security**: halaman login + kebijakan 5x salah → lockout
+- **WA Bridge di VPS**: service mandiri (Baileys) — QR login, session persist, REST /send, webhook event
 - Contacts CRUD + auto-create dari chat masuk
 - Inbox & Chat (terima + kirim)
 - **⭐ Follow-up Engine dasar**: 1 sequence default (FU1/FU2/FU3), trigger kontak baru, stop-on-reply, safety engine

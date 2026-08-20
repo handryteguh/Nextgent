@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Login Flow — Mina-UI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0B0E14;
+    color: #E2E8F0;
+    font-family: 'Inter', sans-serif;
+    padding: 32px 24px 48px;
+  }
+  .wrap { max-width: 1160px; margin: 0 auto; }
+  .header { display: flex; align-items: center; gap: 14px; margin-bottom: 20px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: #F5C044; box-shadow: 0 0 12px rgba(245,192,68,.8); animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+  h1 { font-size: 22px; font-weight: 800; letter-spacing: -0.02em; }
+  .sub { color: #94A3B8; font-size: 13px; margin-top: 2px; }
+  .tag { margin-left: auto; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #F5C044; border: 1px solid rgba(245,192,68,.35); padding: 5px 12px; border-radius: 999px; background: rgba(245,192,68,.08); white-space: nowrap; }
+  .card {
+    background: #10141D;
+    border: 1px solid #1E293B;
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 0 8px 30px rgba(0,0,0,.35);
+  }
+  .card svg { display: block; width: 100%; height: auto; }
+  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 16px; }
+  .mini { background: #10141D; border: 1px solid #1E293B; border-radius: 14px; padding: 16px 18px; }
+  .mini .t { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 13px; color: #F5C044; margin-bottom: 8px; }
+  .mini ul { list-style: none; }
+  .mini li { font-size: 12px; color: #94A3B8; line-height: 1.7; padding-left: 14px; position: relative; }
+  .mini li::before { content: "•"; position: absolute; left: 2px; color: #475569; }
+  .footer { text-align: center; margin-top: 18px; font-size: 11px; color: #475569; font-family: 'JetBrains Mono', monospace; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="header">
+    <div class="dot"></div>
+    <div>
+      <h1>Login Flow — Mina-UI</h1>
+      <div class="sub">Kebijakan keamanan: maksimal 5x salah login → lockout sementara (cooldown) sebelum bisa coba lagi</div>
+    </div>
+    <div class="tag">SECURITY v1</div>
+  </div>
+
+  <div class="card">
+  <svg viewBox="0 0 1100 920" xmlns="http://www.w3.org/2000/svg" font-family="Inter, sans-serif">
+    <defs>
+      <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+        <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#161D2B" stroke-width="0.5"/>
+      </pattern>
+      <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748B"/>
+      </marker>
+      <marker id="arrowRose" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#FB7185"/>
+      </marker>
+      <marker id="arrowEm" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#34D399"/>
+      </marker>
+    </defs>
+
+    <!-- background -->
+    <rect width="1100" height="920" fill="#0B0E14"/>
+    <rect width="1100" height="920" fill="url(#grid)"/>
+
+    <!-- ============ ARROWS (draw first, behind boxes) ============ -->
+    <!-- start -> input -->
+    <line x1="360" y1="114" x2="360" y2="180" stroke="#64748B" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <!-- input -> validate -->
+    <line x1="360" y1="252" x2="360" y2="310" stroke="#64748B" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <!-- validate -> decision1 -->
+    <line x1="360" y1="364" x2="360" y2="380" stroke="#64748B" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <!-- decision1 -> success (yes) -->
+    <line x1="480" y1="430" x2="700" y2="430" stroke="#34D399" stroke-width="1.5" marker-end="url(#arrowEm)"/>
+    <!-- decision1 -> wrong (no) -->
+    <line x1="360" y1="480" x2="360" y2="540" stroke="#FB7185" stroke-width="1.5" marker-end="url(#arrowRose)"/>
+    <!-- wrong -> decision2 -->
+    <line x1="360" y1="594" x2="360" y2="620" stroke="#64748B" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <!-- decision2 -> lockout (yes) -->
+    <line x1="360" y1="700" x2="360" y2="755" stroke="#FB7185" stroke-width="1.5" marker-end="url(#arrowRose)"/>
+    <!-- decision2 -> retry loop (no) -->
+    <polyline points="240,660 130,660 130,216 190,216" fill="none" stroke="#F5C044" stroke-width="1.5" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
+    <!-- lockout -> back to start (reset) -->
+    <polyline points="180,797 70,797 70,87 260,87" fill="none" stroke="#FB7185" stroke-width="1.5" stroke-dasharray="5,4" marker-end="url(#arrowRose)"/>
+
+    <!-- ============ NODES ============ -->
+
+    <!-- START -->
+    <rect x="260" y="60" width="200" height="54" rx="27" fill="#0F172A" stroke="none"/>
+    <rect x="260" y="60" width="200" height="54" rx="27" fill="rgba(6,78,59,0.45)" stroke="#34D399" stroke-width="1.5"/>
+    <text x="360" y="83" text-anchor="middle" font-size="12" font-weight="700" fill="#E2E8F0">START — Halaman Login</text>
+    <text x="360" y="99" text-anchor="middle" font-size="9" fill="#94A3B8">User membuka /login</text>
+
+    <!-- INPUT -->
+    <rect x="190" y="180" width="340" height="72" rx="8" fill="#0F172A" stroke="none"/>
+    <rect x="190" y="180" width="340" height="72" rx="8" fill="rgba(8,51,68,0.45)" stroke="#22D3EE" stroke-width="1.5"/>
+    <text x="360" y="207" text-anchor="middle" font-size="12" font-weight="700" fill="#E2E8F0">Input email &amp; password</text>
+    <text x="360" y="226" text-anchor="middle" font-size="9" fill="#94A3B8">Tampilkan sisa percobaan: <tspan fill="#F5C044" font-weight="600">ke-1/5</tspan></text>
+
+    <!-- VALIDATE -->
+    <rect x="230" y="310" width="260" height="54" rx="8" fill="#0F172A" stroke="none"/>
+    <rect x="230" y="310" width="260" height="54" rx="8" fill="rgba(8,51,68,0.45)" stroke="#22D3EE" stroke-width="1.5"/>
+    <text x="360" y="334" text-anchor="middle" font-size="12" font-weight="700" fill="#E2E8F0">Validasi kredensial</text>
+    <text x="360" y="350" text-anchor="middle" font-size="9" fill="#94A3B8">Cek user &amp; password</text>
+
+    <!-- DECISION 1 -->
+    <polygon points="360,380 480,430 360,480 240,430" fill="#0F172A" stroke="none"/>
+    <polygon points="360,380 480,430 360,480 240,430" fill="rgba(120,53,15,0.35)" stroke="#FBBF24" stroke-width="1.5"/>
+    <text x="360" y="426" text-anchor="middle" font-size="11" font-weight="700" fill="#FBBF24">Kredensial</text>
+    <text x="360" y="442" text-anchor="middle" font-size="11" font-weight="700" fill="#FBBF24">benar?</text>
+
+    <!-- SUCCESS -->
+    <rect x="700" y="398" width="260" height="64" rx="8" fill="#0F172A" stroke="none"/>
+    <rect x="700" y="398" width="260" height="64" rx="8" fill="rgba(6,78,59,0.5)" stroke="#34D399" stroke-width="1.5"/>
+    <text x="830" y="423" text-anchor="middle" font-size="12" font-weight="800" fill="#34D399">✅ LOGIN SUKSES</text>
+    <text x="830" y="440" text-anchor="middle" font-size="9" fill="#94A3B8">Masuk ke dashboard</text>
+
+    <!-- WRONG -->
+    <rect x="260" y="540" width="200" height="54" rx="8" fill="#0F172A" stroke="none"/>
+    <rect x="260" y="540" width="200" height="54" rx="8" fill="rgba(136,19,55,0.45)" stroke="#FB7185" stroke-width="1.5"/>
+    <text x="360" y="564" text-anchor="middle" font-size="12" font-weight="700" fill="#FB7185">❌ SALAH LOGIN</text>
+    <text x="360" y="580" text-anchor="middle" font-size="9" fill="#94A3B8">Percobaan gagal +1</text>
+
+    <!-- DECISION 2 -->
+    <polygon points="360,620 480,660 360,700 240,660" fill="#0F172A" stroke="none"/>
+    <polygon points="360,620 480,660 360,700 240,660" fill="rgba(120,53,15,0.35)" stroke="#FBBF24" stroke-width="1.5"/>
+    <text x="360" y="656" text-anchor="middle" font-size="11" font-weight="700" fill="#FBBF24">Total gagal</text>
+    <text x="360" y="672" text-anchor="middle" font-size="11" font-weight="700" fill="#FBBF24">≥ 5?</text>
+
+    <!-- LOCKOUT -->
+    <rect x="180" y="755" width="360" height="84" rx="10" fill="#0F172A" stroke="none"/>
+    <rect x="180" y="755" width="360" height="84" rx="10" fill="rgba(136,19,55,0.5)" stroke="#FB7185" stroke-width="1.5"/>
+    <text x="360" y="782" text-anchor="middle" font-size="13" font-weight="800" fill="#FB7185">🔒 LOCKOUT SEMENTARA</text>
+    <text x="360" y="800" text-anchor="middle" font-size="9" fill="#E2E8F0">Coba lagi nanti — cooldown <tspan fill="#F5C044" font-weight="700">5 menit</tspan> (hitung mundur)</text>
+    <text x="360" y="816" text-anchor="middle" font-size="9" fill="#94A3B8">Counter di-reset setelah cooldown selesai</text>
+
+    <!-- ============ SIDE LABELS ============ -->
+    <text x="562" y="422" text-anchor="start" font-size="9" fill="#34D399" font-weight="600">YA →</text>
+    <text x="372" y="497" text-anchor="start" font-size="9" fill="#FB7185" font-weight="600">TIDAK ↓</text>
+    <text x="372" y="716" text-anchor="start" font-size="9" fill="#FB7185" font-weight="600">YA ↓</text>
+    <text x="145" y="452" text-anchor="start" font-size="9" fill="#F5C044" font-weight="600">Sisa &lt; 5 — coba lagi</text>
+    <text x="82" y="452" text-anchor="start" font-size="9" fill="#FB7185" font-weight="600">Cooldown selesai — counter reset</text>
+
+    <!-- POLICY NOTE -->
+    <rect x="700" y="600" width="300" height="150" rx="10" fill="#0F172A" stroke="none"/>
+    <rect x="700" y="600" width="300" height="150" rx="10" fill="rgba(30,41,59,0.5)" stroke="#475569" stroke-width="1.5" stroke-dasharray="5,4"/>
+    <text x="718" y="626" font-size="11" font-weight="800" fill="#F5C044">Kebijakan Keamanan</text>
+    <text x="718" y="650" font-size="9.5" fill="#94A3B8">• Maks 5x salah login per sesi</text>
+    <text x="718" y="670" font-size="9.5" fill="#94A3B8">• Setelah 5x → lockout 5 menit</text>
+    <text x="718" y="690" font-size="9.5" fill="#94A3B8">• Hitung mundur ditampilkan</text>
+    <text x="718" y="710" font-size="9.5" fill="#94A3B8">• Counter reset setelah cooldown</text>
+    <text x="718" y="730" font-size="9.5" fill="#64748B">• Lockout waktu bisa dikonfigurasi</text>
+
+    <!-- LEGEND -->
+    <g font-size="9" fill="#94A3B8">
+      <rect x="700" y="790" width="14" height="10" rx="2" fill="rgba(8,51,68,0.45)" stroke="#22D3EE" stroke-width="1"/>
+      <text x="722" y="799">Proses</text>
+      <polygon points="770,790 782,795 770,800 758,795" fill="rgba(120,53,15,0.35)" stroke="#FBBF24" stroke-width="1"/>
+      <text x="790" y="799">Keputusan</text>
+      <rect x="856" y="790" width="14" height="10" rx="2" fill="rgba(6,78,59,0.5)" stroke="#34D399" stroke-width="1"/>
+      <text x="878" y="799">Sukses</text>
+      <rect x="938" y="790" width="14" height="10" rx="2" fill="rgba(136,19,55,0.5)" stroke="#FB7185" stroke-width="1"/>
+      <text x="960" y="799">Lockout</text>
+    </g>
+  </svg>
+  </div>
+
+  <div class="cards">
+    <div class="mini">
+      <div class="t"><span>🔢</span> Percobaan Login</div>
+      <ul>
+        <li>Maksimal 5x salah password per sesi</li>
+        <li>Sisa percobaan ditampilkan ke user</li>
+        <li>Benar di percobaan mana pun → langsung masuk</li>
+      </ul>
+    </div>
+    <div class="mini">
+      <div class="t"><span>🔒</span> Lockout / Cooldown</div>
+      <ul>
+        <li>Setelah 5x gagal → login dikunci sementara</li>
+        <li>Default 5 menit (bisa dikonfigurasi)</li>
+        <li>Hitung mundur ditampilkan ke user</li>
+      </ul>
+    </div>
+    <div class="mini">
+      <div class="t"><span>🔄</span> Reset</div>
+      <ul>
+        <li>Setelah cooldown selesai → counter reset ke 0</li>
+        <li>User bisa coba login lagi dari awal</li>
+        <li>Login sukses juga me-reset counter</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="footer">MINA-UI · Login Security Flow v1 · generated by Nexgent</div>
+</div>
+</body>
+</html>

@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MVC-style Architecture — Next.js Mina-UI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0B0E14;
+    color: #E2E8F0;
+    font-family: 'Inter', sans-serif;
+    padding: 32px 24px 48px;
+  }
+  .wrap { max-width: 1200px; margin: 0 auto; }
+  .header { display: flex; align-items: center; gap: 14px; margin-bottom: 20px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: #F5C044; box-shadow: 0 0 12px rgba(245,192,68,.8); animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+  h1 { font-size: 22px; font-weight: 800; letter-spacing: -0.02em; }
+  .sub { color: #94A3B8; font-size: 13px; margin-top: 2px; }
+  .tag { margin-left: auto; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #F5C044; border: 1px solid rgba(245,192,68,.35); padding: 5px 12px; border-radius: 999px; background: rgba(245,192,68,.08); white-space: nowrap; }
+  .card {
+    background: #10141D;
+    border: 1px solid #1E293B;
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 0 8px 30px rgba(0,0,0,.35);
+  }
+  .card svg { display: block; width: 100%; height: auto; }
+  .cards { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin-top: 16px; }
+  .mini { background: #10141D; border: 1px solid #1E293B; border-radius: 14px; padding: 16px 18px; }
+  .mini .t { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 13px; color: #F5C044; margin-bottom: 8px; }
+  .mini ul { list-style: none; }
+  .mini li { font-size: 12px; color: #94A3B8; line-height: 1.7; padding-left: 14px; position: relative; }
+  .mini li::before { content: "•"; position: absolute; left: 2px; color: #475569; }
+  .footer { text-align: center; margin-top: 18px; font-size: 11px; color: #475569; font-family: 'JetBrains Mono', monospace; }
+  @media (max-width: 900px) { .cards { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="header">
+    <div class="dot"></div>
+    <div>
+      <h1>MVC-style Architecture — Next.js Mina-UI</h1>
+      <div class="sub">Pola PHP MVC (CodeIgniter/Laravel) → dipetakan ke struktur Next.js App Router. Prinsip sama: Controller tipis, Model pegang logika, View cuma render.</div>
+    </div>
+    <div class="tag">FRAMEWORK v0.3</div>
+  </div>
+
+  <div class="card">
+  <svg viewBox="0 0 1200 700" xmlns="http://www.w3.org/2000/svg" font-family="Inter, sans-serif">
+    <defs>
+      <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+        <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#161D2B" stroke-width="0.5"/>
+      </pattern>
+      <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748B"/>
+      </marker>
+      <marker id="arrowCy" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#22D3EE"/>
+      </marker>
+      <marker id="arrowEm" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#34D399"/>
+      </marker>
+      <marker id="arrowAm" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#FBBF24"/>
+      </marker>
+    </defs>
+
+    <!-- background -->
+    <rect width="1200" height="700" fill="#0B0E14"/>
+    <rect width="1200" height="700" fill="url(#grid)"/>
+
+    <!-- ============ SECTION: PHP MVC (kiri) ============ -->
+    <text x="40" y="36" font-size="12" font-weight="800" fill="#94A3B8">POLA LAMA (PHP) — yang loe biasa</text>
+
+    <rect x="30" y="56" width="280" height="300" rx="14" fill="none" stroke="#475569" stroke-width="1.5" stroke-dasharray="5,4"/>
+
+    <!-- Controller -->
+    <rect x="50" y="80" width="240" height="70" rx="10" fill="#0F172A" stroke="none"/>
+    <rect x="50" y="80" width="240" height="70" rx="10" fill="rgba(8,51,68,0.45)" stroke="#22D3EE" stroke-width="1.5"/>
+    <text x="170" y="108" text-anchor="middle" font-size="12" font-weight="800" fill="#22D3EE">Controller</text>
+    <text x="170" y="126" text-anchor="middle" font-size="9" fill="#94A3B8">controllers/User.php</text>
+    <text x="170" y="140" text-anchor="middle" font-size="9" fill="#94A3B8">nerima request → panggil model</text>
+
+    <!-- Model -->
+    <rect x="50" y="180" width="240" height="70" rx="10" fill="#0F172A" stroke="none"/>
+    <rect x="50" y="180" width="240" height="70" rx="10" fill="rgba(76,29,149,0.4)" stroke="#A78BFA" stroke-width="1.5"/>
+    <text x="170" y="208" text-anchor="middle" font-size="12" font-weight="800" fill="#A78BFA">Model</text>
+    <text x="170" y="226" text-anchor="middle" font-size="9" fill="#94A3B8">models/User_model.php</text>
+    <text x="170" y="240" text-anchor="middle" font-size="9" fill="#94A3B8">logika + query database</text>
+
+    <!-- View -->
+    <rect x="50" y="280" width="240" height="60" rx="10" fill="#0F172A" stroke="none"/>
+    <rect x="50" y="280" width="240" height="60" rx="10" fill="rgba(251,146,60,0.3)" stroke="#FB923C" stroke-width="1.5"/>
+    <text x="170" y="306" text-anchor="middle" font-size="12" font-weight="800" fill="#FB923C">View</text>
+    <text x="170" y="324" text-anchor="middle" font-size="9" fill="#94A3B8">views/users/index.php</text>
+
+    <!-- arrows PHPMVC -->
+    <line x1="170" y1="150" x2="170" y2="178" stroke="#64748B" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <line x1="170" y1="250" x2="170" y2="278" stroke="#64748B" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+    <!-- ============ MAPPING ARROWS ============ -->
+    <text x="350" y="200" text-anchor="middle" font-size="10" font-weight="700" fill="#F5C044">→</text>
+    <text x="350" y="216" text-anchor="middle" font-size="8" fill="#94A3B8">sama</text>
+    <text x="350" y="228" text-anchor="middle" font-size="8" fill="#94A3B8">prinsipnya</text>
+
+    <!-- ============ SECTION: NEXT.JS (kanan) ============ -->
+    <text x="430" y="36" font-size="12" font-weight="800" fill="#F5C044">POLA BARU (NEXT.JS) — buat Mina-UI</text>
+
+    <rect x="395" y="56" width="770" height="300" rx="14" fill="none" stroke="#FBBF24" stroke-width="1.5" stroke-dasharray="5,4"/>
+
+    <!-- Controller (Route Handlers) -->
+    <rect x="415" y="80" width="360" height="70" rx="10" fill="#0F172A" stroke="none"/>
+    <rect x="415" y="80" width="360" height="70" rx="10" fill="rgba(8,51,68,0.45)" stroke="#22D3EE" stroke-width="1.5"/>
+    <text x="595" y="108" text-anchor="middle" font-size="12" font-weight="800" fill="#22D3EE">Controller → Route Handlers</text>
+    <text x="595" y="126" text-anchor="middle" font-size="9" fill="#94A3B8">app/api/auth/route.ts · app/api/contacts/route.ts</text>
+    <text x="595" y="140" text-anchor="middle" font-size="9" fill="#94A3B8">export GET/POST → panggil service (harus TIPIS)</text>
+
+    <!-- Model (Services) -->
+    <rect x="415" y="180" width="360" height="70" rx="10" fill="#0F172A" stroke="none"/>
+    <rect x="415" y="180" width="360" height="70" rx="10" fill="rgba(76,29,149,0.4)" stroke="#A78BFA" stroke-width="1.5"/>
+    <text x="595" y="208" text-anchor="middle" font-size="12" font-weight="800" fill="#A78BFA">Model → Services + DB</text>
+    <text x="595" y="226" text-anchor="middle" font-size="9" fill="#94A3B8">lib/services/auth.service.ts · contact.service.ts</text>
+    <text x="595" y="240" text-anchor="middle" font-size="9" fill="#94A3B8">logika bisnis + SQLite (lib/db)</text>
+
+    <!-- View (Components) -->
+    <rect x="415" y="280" width="360" height="60" rx="10" fill="#0F172A" stroke="none"/>
+    <rect x="415" y="280" width="360" height="60" rx="10" fill="rgba(251,146,60,0.3)" stroke="#FB923C" stroke-width="1.5"/>
+    <text x="595" y="306" text-anchor="middle" font-size="12" font-weight="800" fill="#FB923C">View → React Components</text>
+    <text x="595" y="324" text-anchor="middle" font-size="9" fill="#94A3B8">app/(dashboard)/users/page.tsx · components/ui/*</text>
+
+    <!-- arrows NEXT -->
+    <line x1="595" y1="150" x2="595" y2="178" stroke="#64748B" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <line x1="595" y1="250" x2="595" y2="278" stroke="#64748B" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+    <!-- EXTRA NEXT boxes -->
+    <rect x="800" y="80" width="340" height="70" rx="10" fill="#0F172A" stroke="none"/>
+    <rect x="800" y="80" width="340" height="70" rx="10" fill="rgba(120,53,15,0.35)" stroke="#FBBF24" stroke-width="1.5"/>
+    <text x="970" y="108" text-anchor="middle" font-size="12" font-weight="800" fill="#FBBF24">Middleware (gate)</text>
+    <text x="970" y="126" text-anchor="middle" font-size="9" fill="#94A3B8">middleware.ts — proteksi halaman</text>
+    <text x="970" y="140" text-anchor="middle" font-size="9" fill="#94A3B8">cek session/PIN sebelum render (kayak filter auth)</text>
+
+    <rect x="800" y="180" width="340" height="70" rx="10" fill="#0F172A" stroke="none"/>
+    <rect x="800" y="180" width="340" height="70" rx="10" fill="rgba(6,78,59,0.4)" stroke="#34D399" stroke-width="1.5"/>
+    <text x="970" y="208" text-anchor="middle" font-size="12" font-weight="800" fill="#34D399">Config + Env</text>
+    <text x="970" y="226" text-anchor="middle" font-size="9" fill="#94A3B8">config/ + .env — setting app</text>
+    <text x="970" y="240" text-anchor="middle" font-size="9" fill="#94A3B8">interval FU, jam kirim, cooldown login</text>
+
+    <rect x="800" y="280" width="340" height="60" rx="10" fill="#0F172A" stroke="none"/>
+    <rect x="800" y="280" width="340" height="60" rx="10" fill="rgba(136,19,55,0.35)" stroke="#FB7185" stroke-width="1.5"/>
+    <text x="970" y="306" text-anchor="middle" font-size="12" font-weight="800" fill="#FB7185">3 Aturan Emas</text>
+    <text x="970" y="324" text-anchor="middle" font-size="9" fill="#94A3B8">Route tipis · Service pegang logika · View gak kenal DB</text>
+
+    <!-- ============ BOTTOM: REQUEST FLOW ============ -->
+    <text x="40" y="400" font-size="12" font-weight="800" fill="#F5C044">ALUR REQUEST (1 klik di UI → data dari DB)</text>
+
+    <rect x="30" y="420" width="1140" height="120" rx="12" fill="#0F172A" stroke="none"/>
+    <rect x="30" y="420" width="1140" height="120" rx="12" fill="rgba(30,41,59,0.25)" stroke="#475569" stroke-width="1.5"/>
+
+    <rect x="60" y="448" width="200" height="64" rx="10" fill="rgba(251,146,60,0.3)" stroke="#FB923C" stroke-width="1.5"/>
+    <text x="160" y="476" text-anchor="middle" font-size="10" font-weight="700" fill="#FB923C">1. View (React)</text>
+    <text x="160" y="494" text-anchor="middle" font-size="8.5" fill="#94A3B8">user klik tombol / buka halaman</text>
+
+    <rect x="310" y="448" width="200" height="64" rx="10" fill="rgba(8,51,68,0.45)" stroke="#22D3EE" stroke-width="1.5"/>
+    <text x="410" y="476" text-anchor="middle" font-size="10" font-weight="700" fill="#22D3EE">2. Route Handler</text>
+    <text x="410" y="494" text-anchor="middle" font-size="8.5" fill="#94A3B8">export POST → validasi input</text>
+
+    <rect x="560" y="448" width="200" height="64" rx="10" fill="rgba(76,29,149,0.4)" stroke="#A78BFA" stroke-width="1.5"/>
+    <text x="660" y="476" text-anchor="middle" font-size="10" font-weight="700" fill="#A78BFA">3. Service</text>
+    <text x="660" y="494" text-anchor="middle" font-size="8.5" fill="#94A3B8">logika bisnis (lockout, FU)</text>
+
+    <rect x="810" y="448" width="200" height="64" rx="10" fill="rgba(6,78,59,0.4)" stroke="#34D399" stroke-width="1.5"/>
+    <text x="910" y="476" text-anchor="middle" font-size="10" font-weight="700" fill="#34D399">4. Database</text>
+    <text x="910" y="494" text-anchor="middle" font-size="8.5" fill="#94A3B8">SQLite (contacts, runs…)</text>
+
+    <!-- request arrows -->
+    <line x1="260" y1="480" x2="308" y2="480" stroke="#64748B" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <line x1="510" y1="480" x2="558" y2="480" stroke="#64748B" stroke-width="1.5" marker-end="url(#arrow)"/>
+    <line x1="760" y1="480" x2="808" y2="480" stroke="#64748B" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+    <!-- ============ BOTTOM: FOLDER TREE ============ -->
+    <text x="40" y="580" font-size="12" font-weight="800" fill="#F5C044">STRUKTUR FOLDER MINA-UI (MVC-STYLE)</text>
+
+    <rect x="30" y="596" width="1140" height="88" rx="12" fill="#0F172A" stroke="none"/>
+    <rect x="30" y="596" width="1140" height="88" rx="12" fill="rgba(30,41,59,0.25)" stroke="#475569" stroke-width="1.5"/>
+
+    <text x="60" y="622" font-size="10" font-family="JetBrains Mono, monospace" fill="#E2E8F0">app/ <tspan fill="#22D3EE">← routes + controllers</tspan></text>
+    <text x="60" y="640" font-size="10" font-family="JetBrains Mono, monospace" fill="#E2E8F0">├─ (auth)/login/ · (dashboard)/layout + pages</text>
+    <text x="60" y="658" font-size="10" font-family="JetBrains Mono, monospace" fill="#E2E8F0">components/ <tspan fill="#FB923C">← view partials</tspan> · lib/services/ <tspan fill="#A78BFA">← model</tspan> · lib/db/ · middleware.ts · config/</text>
+  </svg>
+  </div>
+
+  <div class="cards">
+    <div class="mini">
+      <div class="t"><span>📁</span> Route Handler = Controller</div>
+      <ul>
+        <li>Export GET/POST di app/api/*</li>
+        <li>Terima request, validasi, panggil service</li>
+        <li>Harus TIPIS — gak ada logika berat</li>
+      </ul>
+    </div>
+    <div class="mini">
+      <div class="t"><span>🧠</span> Service = Model</div>
+      <ul>
+        <li>Logika bisnis: verifikasi PIN, lockout, FU</li>
+        <li>Hanya service yang sentuh database</li>
+        <li>Gampang di-test sendirian</li>
+      </ul>
+    </div>
+    <div class="mini">
+      <div class="t"><span>🎨</span> Komponen = View</div>
+      <ul>
+        <li>React components + page.tsx</li>
+        <li>Cuma render data — gak kenal DB</li>
+        <li>Reusable: Button, Card, DataTable</li>
+      </ul>
+    </div>
+    <div class="mini">
+      <div class="t"><span>🛡️</span> Middleware = Gate</div>
+      <ul>
+        <li>Kaya filter auth di CodeIgniter</li>
+        <li>Cek session/PIN sebelum render</li>
+        <li>Redirect ke /login kalau belum masuk</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="footer">MINA-UI · MVC-style Next.js Architecture · generated by Nexgent</div>
+</div>
+</body>
+</html>
