@@ -1,38 +1,65 @@
 /**
  * lib/session.ts — Edge-safe session helpers
- * TIDAK import better-sqlite3 atau db/index — bisa dipakai di middleware.
+ * Pakai Web Crypto API (tersedia di Edge + Node.js) — TIDAK pakai Node crypto builtin.
  */
-import crypto from "crypto";
 
 export const SESSION_COOKIE_NAME = "mina_session";
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 hari
-const SESSION_SECRET =
-  process.env.SESSION_SECRET || "mina-ui-dev-secret-change-me";
 
-function sign(data: string): string {
-  return crypto
-    .createHmac("sha256", SESSION_SECRET)
-    .update(data)
-    .digest("hex");
+function getSecret(): string {
+  return process.env.SESSION_SECRET || "mina-ui-dev-secret-change-me";
+}
+
+/** Import HMAC key dari secret string (Web Crypto, edge-safe) */
+async function getKey(): Promise<CryptoKey> {
+  const enc = new TextEncoder();
+  return crypto.subtle.importKey(
+    "raw",
+    enc.encode(getSecret()),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign", "verify"]
+  );
+}
+
+function buf2hex(buf: ArrayBuffer): string {
+  return Array.from(new Uint8Array(buf))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function hex2buf(hex: string): Uint8Array {
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < hex.length; i += 2)
+    bytes[i / 2] = parseInt(hex.slice(i, i + 2), 16);
+  return bytes;
 }
 
 /** Buat payload cookie (dipanggil dari lib/auth.ts setelah login sukses) */
-export function makeSessionValue(): string {
+export async function makeSessionValue(): Promise<string> {
   const expiry = `${Date.now() + SESSION_TTL_MS}`;
-  return `${expiry}.${sign(expiry)}`;
+  const key = await getKey();
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(expiry));
+  return `${expiry}.${buf2hex(sig)}`;
 }
 
-/** Pure cookie verification — bisa jalan di Edge runtime */
-export function verifySessionCookie(raw: string | undefined): boolean {
+/** Pure async cookie verification — jalan di Edge runtime & Node.js */
+export async function verifySessionCookie(raw: string | undefined): Promise<boolean> {
   if (!raw) return false;
   const dot = raw.lastIndexOf(".");
   if (dot < 0) return false;
   const expiry = raw.slice(0, dot);
   const sig = raw.slice(dot + 1);
-  const expected = sign(expiry);
-  const sigBuf = Buffer.from(sig, "hex");
-  const expBuf = Buffer.from(expected, "hex");
-  if (sigBuf.length !== expBuf.length) return false;
-  if (!crypto.timingSafeEqual(sigBuf, expBuf)) return false;
-  return Number(expiry) > Date.now();
+  if (Number(expiry) <= Date.now()) return false;
+  try {
+    const key = await getKey();
+    return await crypto.subtle.verify(
+      "HMAC",
+      key,
+      hex2buf(sig).buffer as ArrayBuffer,
+      new TextEncoder().encode(expiry)
+    );
+  } catch {
+    return false;
+  }
 }

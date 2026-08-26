@@ -89,7 +89,7 @@ export async function verifyLogin(pin: string): Promise<
 /** Bikin session cookie (setelah login sukses) */
 async function createSession() {
   const store = await cookies();
-  store.set(SESSION_COOKIE_NAME, makeSessionValue(), {
+  store.set(SESSION_COOKIE_NAME, await makeSessionValue(), {
     httpOnly: true,
     sameSite: "lax",
     path: "/",

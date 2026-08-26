@@ -1,109 +1,258 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { FilterPills } from "@/components/ui/filter-pills";
+import { FilterPills, type Pill } from "@/components/ui/filter-pills";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { KpiCard } from "@/components/ui/kpi-card";
 import { fmtDate } from "@/lib/utils";
 
-// Data dummy kontak (Phase 0) — status lead/customer + topic {topik} (v0.4.1)
-const contacts = [
-  { id: 1, name: "Yan Azmi", email: "yanazmi@gmail.com", wa: "628123456001", role: "lead" as const, topic: "Paket Pro toko online", status: "Menunggu FU1", source: "WA", joined: "2026-08-19" },
-  { id: 2, name: "Johar Tantowi", email: "ramevision@gmail.com", wa: "628123456002", role: "lead" as const, topic: "Paket basic", status: "FU1 terkirim", source: "WA", joined: "2026-08-17" },
-  { id: 3, name: "Evi Yuslatin", email: "eviyuslatin@gmail.com", wa: "628123456003", role: "customer" as const, topic: "Perpanjangan Pro Max", status: "FU2 terkirim", source: "Import", joined: "2026-08-12" },
-  { id: 4, name: "Prasetyo Darmawan", email: "prasetyobekt82@gmail.com", wa: "628123456004", role: "customer" as const, topic: "Basic UMKM", status: "Balas", source: "WA", joined: "2026-08-11" },
-  { id: 5, name: "Maya Jaya", email: "mayajaya@gmail.com", wa: "628123456005", role: "lead" as const, topic: "", status: "Selesai", source: "Manual", joined: "2026-08-10" },
-  { id: 6, name: "Fajar Servis", email: "fajarservis@gmail.com", wa: "628123456006", role: "lead" as const, topic: "Basic Bengkel", status: "Menunggu FU1", source: "WA", joined: "2026-08-09" },
-  { id: 7, name: "Ranti Mebel", email: "rantimebel@gmail.com", wa: "628123456007", role: "lead" as const, topic: "Pro Max Mebel", status: "Unsubscribe", source: "WA", joined: "2026-08-05" },
-  { id: 8, name: "Ari Studio", email: "aristudio@gmail.com", wa: "628123456008", role: "lead" as const, topic: "", status: "FU3 terkirim", source: "Import", joined: "2026-08-02" },
-];
+// ============================================================
+// Types
+// ============================================================
+type ContactStatus = "lead" | "customer" | "unsubscribed";
 
-const statusVariant: Record<string, "default" | "success" | "danger" | "warning" | "info" | "violet"> = {
-  "Menunggu FU1": "warning",
-  "FU1 terkirim": "info",
-  "FU2 terkirim": "violet",
-  "FU3 terkirim": "violet",
-  "Balas": "success",
-  "Selesai": "success",
-  "Unsubscribe": "danger",
+interface Contact {
+  id: number;
+  name: string;
+  phone: string;
+  status: ContactStatus;
+  note: string | null;
+  source: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+// ============================================================
+// Helpers
+// ============================================================
+const statusVariant: Record<ContactStatus, "default" | "success" | "danger" | "warning"> = {
+  lead: "warning",
+  customer: "success",
+  unsubscribed: "danger",
 };
 
-export default function ContactsPage() {
-  const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState("semua");
+const statusLabel: Record<ContactStatus, string> = {
+  lead: "Lead",
+  customer: "Customer",
+  unsubscribed: "Unsubscribe",
+};
 
-  const pills = [
-    { key: "semua", label: "Semua", count: contacts.length },
-    { key: "menunggu", label: "Menunggu", count: contacts.filter((c) => c.status.startsWith("Menunggu")).length },
-    { key: "aktif", label: "Aktif", count: contacts.filter((c) => !["Selesai", "Unsubscribe"].includes(c.status)).length },
-    { key: "selesai", label: "Selesai", count: contacts.filter((c) => c.status === "Selesai").length },
-    { key: "unsub", label: "Unsubscribe", count: contacts.filter((c) => c.status === "Unsubscribe").length },
-  ];
+const pills: Pill[] = [
+  { key: "semua", label: "Semua" },
+  { key: "lead", label: "Lead" },
+  { key: "customer", label: "Customer" },
+  { key: "unsubscribed", label: "Unsubscribe" },
+];
 
-  const filtered = contacts.filter((c) => {
-    const q = query.toLowerCase();
-    const matchQuery = !q || c.name.toLowerCase().includes(q) || c.email.toLowerCase().includes(q) || c.wa.includes(q);
-    const matchFilter =
-      filter === "semua" ||
-      (filter === "menunggu" && c.status.startsWith("Menunggu")) ||
-      (filter === "aktif" && !["Selesai", "Unsubscribe"].includes(c.status)) ||
-      (filter === "selesai" && c.status === "Selesai") ||
-      (filter === "unsub" && c.status === "Unsubscribe");
-    return matchQuery && matchFilter;
-  });
+// ============================================================
+// Modal Tambah Kontak
+// ============================================================
+function AddContactModal({
+  onClose,
+  onSaved,
+}: {
+  onClose: () => void;
+  onSaved: (c: Contact) => void;
+}) {
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [note, setNote] = useState("");
+  const [status, setStatus] = useState<ContactStatus>("lead");
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  const cols: Column<(typeof contacts)[number]>[] = [
-    { key: "name", header: "Nama" },
-    { key: "wa", header: "WA" },
-    {
-      key: "role",
-      header: "Tipe",
-      render: (c) => (c.role === "customer" ? <Badge variant="success">Customer</Badge> : <Badge variant="info">Lead</Badge>),
-    },
-    { key: "topic", header: "Topik", render: (c) => <span className={c.topic ? "text-slate-300" : "text-faint"}>{"{topik}"}{c.topic ? `: ${c.topic}` : " (kosong)"}</span> },
-    { key: "status", header: "Status FU", render: (c) => <Badge variant={statusVariant[c.status] ?? "default"}>{c.status}</Badge> },
-    { key: "source", header: "Sumber", render: (c) => <span className="text-faint">{c.source}</span> },
-    { key: "joined", header: "Masuk", render: (c) => <span className="text-faint">{fmtDate(c.joined)}</span> },
-    {
-      key: "actions",
-      header: "Aksi",
-      className: "text-right",
-      render: () => (
-        <div className="flex justify-end gap-2">
-          <Button variant="outline" size="sm">Chat</Button>
-          <Button variant="danger" size="sm">Hapus</Button>
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+    try {
+      const res = await fetch("/api/contacts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, phone, note, status }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error || "Gagal menyimpan"); return; }
+      onSaved(data.data);
+    } catch {
+      setError("Gagal terhubung ke server");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
+      <div className="w-full max-w-md rounded-2xl border border-edge bg-surface p-6 shadow-2xl">
+        <div className="mb-5 flex items-center justify-between">
+          <h2 className="text-base font-bold">Tambah Kontak</h2>
+          <button onClick={onClose} className="text-muted hover:text-slate-200">✕</button>
         </div>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-muted">Nama *</label>
+            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nama lengkap" required />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-muted">Nomor WA * (format 62xxx)</label>
+            <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="6281234567890" inputMode="numeric" required />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-muted">Status</label>
+            <select
+              value={status}
+              onChange={(e) => setStatus(e.target.value as ContactStatus)}
+              className="w-full rounded-lg border border-edge bg-surface-2 px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-accent"
+            >
+              <option value="lead">Lead</option>
+              <option value="customer">Customer</option>
+            </select>
+          </div>
+          <div>
+            <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-muted">Catatan</label>
+            <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Topik, kebutuhan, dsb." />
+          </div>
+          {error && <p className="text-xs text-danger">{error}</p>}
+          <div className="flex gap-2 pt-1">
+            <Button type="submit" disabled={loading} className="flex-1">
+              {loading ? "Menyimpan…" : "Simpan Kontak"}
+            </Button>
+            <Button type="button" variant="ghost" onClick={onClose} className="flex-1">Batal</Button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// Halaman Contacts
+// ============================================================
+export default function ContactsPage() {
+  const [data, setData] = useState<Contact[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState("semua");
+  const [query, setQuery] = useState("");
+  const [showAdd, setShowAdd] = useState(false);
+  const [deleteId, setDeleteId] = useState<number | null>(null);
+
+  // Re-fetch setiap kali query/filter berubah
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      setLoading(true);
+      try {
+        const params = new URLSearchParams({ limit: "100" });
+        if (query) params.set("q", query);
+        if (filter !== "semua") params.set("status", filter);
+        const res = await fetch(`/api/contacts?${params}`);
+        const json = await res.json();
+        if (!active) return;
+        setData(json.data ?? []);
+        setTotal(json.total ?? 0);
+      } catch { /* silent */ }
+      finally { if (active) setLoading(false); }
+    })();
+    return () => { active = false; };
+  }, [query, filter]);
+
+  const handleDelete = async (id: number) => {
+    setDeleteId(id);
+    try {
+      await fetch(`/api/contacts/${id}`, { method: "DELETE" });
+      setData((d) => d.filter((c) => c.id !== id));
+    } finally { setDeleteId(null); }
+  };
+
+  const cols: Column<Contact>[] = [
+    {
+      key: "name",
+      header: "Nama",
+      render: (r) => (
+        <div>
+          <p className="font-semibold text-slate-100">{r.name}</p>
+          <p className="text-xs text-muted">{r.phone}</p>
+        </div>
+      ),
+    },
+    {
+      key: "status",
+      header: "Status",
+      render: (r) => (
+        <Badge variant={statusVariant[r.status]}>{statusLabel[r.status]}</Badge>
+      ),
+    },
+    {
+      key: "note",
+      header: "Catatan",
+      render: (r) => <span className="text-sm text-muted">{r.note ?? "—"}</span>,
+    },
+    {
+      key: "source",
+      header: "Sumber",
+      render: (r) => <span className="text-xs text-faint">{r.source ?? "manual"}</span>,
+    },
+    {
+      key: "createdAt",
+      header: "Bergabung",
+      render: (r) => <span className="text-xs text-faint">{fmtDate(new Date(r.createdAt).toISOString())}</span>,
+    },
+    {
+      key: "id",
+      header: "",
+      render: (r) => (
+        <button
+          onClick={() => handleDelete(r.id)}
+          disabled={deleteId === r.id}
+          className="text-xs text-danger/70 hover:text-danger disabled:opacity-40"
+        >
+          {deleteId === r.id ? "…" : "Hapus"}
+        </button>
       ),
     },
   ];
 
+  const leads = data.filter((c) => c.status === "lead").length;
+  const customers = data.filter((c) => c.status === "customer").length;
+
   return (
-    <div>
+    <div className="space-y-6">
+      {showAdd && (
+        <AddContactModal
+          onClose={() => setShowAdd(false)}
+          onSaved={(c) => { setData((d) => [c, ...d]); setShowAdd(false); }}
+        />
+      )}
+
       <PageHeader
-        title="Contacts"
-        subtitle="Kelola kontak & leads — auto-follow-up berjalan otomatis"
-        actions={<Button size="sm">+ Tambah Kontak</Button>}
+        title="Kontak"
+        subtitle={`${total} kontak terdaftar`}
+        actions={
+          <Button onClick={() => setShowAdd(true)} size="sm">
+            + Tambah Kontak
+          </Button>
+        }
       />
 
-      <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
-        <KpiCard
-          label="Total Kontak"
-          value={contacts.length}
-          sub="Semua sumber"
-          color="accent"
-          icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>}
+      {/* KPI row */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <KpiCard value={total} label="Total" sub="Semua kontak" color="info"
+          icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>}
         />
-        <KpiCard
-          label="Belum Dibales"
-          value={contacts.filter((c) => c.status.startsWith("FU") || c.status.startsWith("Menunggu")).length}
-          sub="Perlu follow-up"
-          color="orange"
-          icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
+        <KpiCard value={leads} label="Lead" sub="Belum closing" color="orange"
+          icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>}
+        />
+        <KpiCard value={customers} label="Customer" sub="Sudah closing" color="success"
+          icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>}
+        />
+        <KpiCard value={data.filter((c) => c.status === "unsubscribed").length} label="Unsub" sub="Stop follow-up" color="danger"
+          icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg>}
         />
       </div>
 
@@ -112,13 +261,17 @@ export default function ContactsPage() {
           <FilterPills pills={pills} active={filter} onChange={setFilter} />
           <div className="w-full sm:w-64">
             <Input
-              placeholder="Cari nama, email, atau WA..."
+              placeholder="Cari nama atau nomor WA..."
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
           </div>
         </div>
-        <DataTable columns={cols} rows={filtered} emptyText="Kontak tidak ditemukan" />
+        {loading ? (
+          <div className="py-12 text-center text-sm text-muted">Memuat kontak…</div>
+        ) : (
+          <DataTable columns={cols} rows={data} emptyText="Kontak tidak ditemukan" />
+        )}
       </Card>
     </div>
   );

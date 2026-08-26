@@ -17,7 +17,7 @@ export async function middleware(req: NextRequest) {
   }
 
   const isPublic = PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
-  const authed = verifySessionCookie(req.cookies.get(SESSION_COOKIE_NAME)?.value);
+  const authed = await verifySessionCookie(req.cookies.get(SESSION_COOKIE_NAME)?.value);
 
   // Halaman publik + sudah login → arahkan ke dashboard
   if (isPublic && authed) {
