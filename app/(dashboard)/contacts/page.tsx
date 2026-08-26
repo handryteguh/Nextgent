@@ -11,16 +11,16 @@ import { DataTable, type Column } from "@/components/ui/data-table";
 import { KpiCard } from "@/components/ui/kpi-card";
 import { fmtDate } from "@/lib/utils";
 
-// Data dummy kontak (Phase 0)
+// Data dummy kontak (Phase 0) — status lead/customer + topic {topik} (v0.4.1)
 const contacts = [
-  { id: 1, name: "Yan Azmi", email: "yanazmi@gmail.com", wa: "628123456001", status: "Menunggu FU1", source: "WA", joined: "2026-08-19" },
-  { id: 2, name: "Johar Tantowi", email: "ramevision@gmail.com", wa: "628123456002", status: "FU1 terkirim", source: "WA", joined: "2026-08-17" },
-  { id: 3, name: "Evi Yuslatin", email: "eviyuslatin@gmail.com", wa: "628123456003", status: "FU2 terkirim", source: "Import", joined: "2026-08-12" },
-  { id: 4, name: "Prasetyo Darmawan", email: "prasetyobekt82@gmail.com", wa: "628123456004", status: "Balas", source: "WA", joined: "2026-08-11" },
-  { id: 5, name: "Maya Jaya", email: "mayajaya@gmail.com", wa: "628123456005", status: "Selesai", source: "Manual", joined: "2026-08-10" },
-  { id: 6, name: "Fajar Servis", email: "fajarservis@gmail.com", wa: "628123456006", status: "Menunggu FU1", source: "WA", joined: "2026-08-09" },
-  { id: 7, name: "Ranti Mebel", email: "rantimebel@gmail.com", wa: "628123456007", status: "Unsubscribe", source: "WA", joined: "2026-08-05" },
-  { id: 8, name: "Ari Studio", email: "aristudio@gmail.com", wa: "628123456008", status: "FU3 terkirim", source: "Import", joined: "2026-08-02" },
+  { id: 1, name: "Yan Azmi", email: "yanazmi@gmail.com", wa: "628123456001", role: "lead" as const, topic: "Paket Pro toko online", status: "Menunggu FU1", source: "WA", joined: "2026-08-19" },
+  { id: 2, name: "Johar Tantowi", email: "ramevision@gmail.com", wa: "628123456002", role: "lead" as const, topic: "Paket basic", status: "FU1 terkirim", source: "WA", joined: "2026-08-17" },
+  { id: 3, name: "Evi Yuslatin", email: "eviyuslatin@gmail.com", wa: "628123456003", role: "customer" as const, topic: "Perpanjangan Pro Max", status: "FU2 terkirim", source: "Import", joined: "2026-08-12" },
+  { id: 4, name: "Prasetyo Darmawan", email: "prasetyobekt82@gmail.com", wa: "628123456004", role: "customer" as const, topic: "Basic UMKM", status: "Balas", source: "WA", joined: "2026-08-11" },
+  { id: 5, name: "Maya Jaya", email: "mayajaya@gmail.com", wa: "628123456005", role: "lead" as const, topic: "", status: "Selesai", source: "Manual", joined: "2026-08-10" },
+  { id: 6, name: "Fajar Servis", email: "fajarservis@gmail.com", wa: "628123456006", role: "lead" as const, topic: "Basic Bengkel", status: "Menunggu FU1", source: "WA", joined: "2026-08-09" },
+  { id: 7, name: "Ranti Mebel", email: "rantimebel@gmail.com", wa: "628123456007", role: "lead" as const, topic: "Pro Max Mebel", status: "Unsubscribe", source: "WA", joined: "2026-08-05" },
+  { id: 8, name: "Ari Studio", email: "aristudio@gmail.com", wa: "628123456008", role: "lead" as const, topic: "", status: "FU3 terkirim", source: "Import", joined: "2026-08-02" },
 ];
 
 const statusVariant: Record<string, "default" | "success" | "danger" | "warning" | "info" | "violet"> = {
@@ -60,6 +60,12 @@ export default function ContactsPage() {
   const cols: Column<(typeof contacts)[number]>[] = [
     { key: "name", header: "Nama" },
     { key: "wa", header: "WA" },
+    {
+      key: "role",
+      header: "Tipe",
+      render: (c) => (c.role === "customer" ? <Badge variant="success">Customer</Badge> : <Badge variant="info">Lead</Badge>),
+    },
+    { key: "topic", header: "Topik", render: (c) => <span className={c.topic ? "text-slate-300" : "text-faint"}>{"{topik}"}{c.topic ? `: ${c.topic}` : " (kosong)"}</span> },
     { key: "status", header: "Status FU", render: (c) => <Badge variant={statusVariant[c.status] ?? "default"}>{c.status}</Badge> },
     { key: "source", header: "Sumber", render: (c) => <span className="text-faint">{c.source}</span> },
     { key: "joined", header: "Masuk", render: (c) => <span className="text-faint">{fmtDate(c.joined)}</span> },
@@ -84,7 +90,7 @@ export default function ContactsPage() {
         actions={<Button size="sm">+ Tambah Kontak</Button>}
       />
 
-      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
         <KpiCard
           label="Total Kontak"
           value={contacts.length}

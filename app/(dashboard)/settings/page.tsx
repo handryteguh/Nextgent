@@ -6,77 +6,112 @@ import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
+
+// ⚠️ Prototipe statis Phase 0 — status bridge masih simulasi.
+// Nanti di Phase 1: baca dari GET /status di bridge (VPS).
+type BridgeStatus = "disconnected" | "connecting" | "connected" | "reconnecting" | "logged_out";
+
+const statusMeta: Record<BridgeStatus, { label: string; variant: "default" | "success" | "danger" | "warning" | "info"; dot: string; desc: string }> = {
+  disconnected: { label: "○ Belum Connect", variant: "danger", dot: "bg-danger", desc: "Belum ada nomor WA terhubung ke bridge." },
+  connecting: { label: "● Menghubungkan...", variant: "warning", dot: "bg-orange", desc: "Bridge sedang socket handshake dengan WhatsApp." },
+  connected: { label: "● Terhubung", variant: "success", dot: "bg-success", desc: "Bridge siap kirim & terima pesan." },
+  reconnecting: { label: "● Menghubungkan Ulang...", variant: "warning", dot: "bg-orange", desc: "Socket putus, bridge nyoba balik otomatis." },
+  logged_out: { label: "○ Session Expired", variant: "danger", dot: "bg-danger", desc: "Session di-revoke dari HP / expired. Scan QR ulang di UI bridge." },
+};
 
 export default function SettingsPage() {
-  const [waConnected] = useState(false);
-  const [showQr, setShowQr] = useState(false);
+  // Simulasi: dropdown biar bisa preview semua state (Phase 0)
+  const [waStatus, setWaStatus] = useState<BridgeStatus>("connected");
+
+  const st = statusMeta[waStatus];
 
   return (
     <div>
-      <PageHeader title="Pengaturan" subtitle="Konfigurasi aplikasi & koneksi WhatsApp" />
+      <PageHeader title="Pengaturan" subtitle="Konfigurasi aplikasi & koneksi WhatsApp (statis)" />
 
+      {/* Banner disconnect → sequence pause (sesuai PRD 5.1) */}
+      {waStatus !== "connected" && (
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-danger/30 bg-danger/10 px-5 py-3.5">
+          <div className="flex items-center gap-3">
+            <span className={cn("h-2.5 w-2.5 rounded-full", st.dot)} />
+            <div>
+              <p className="text-sm font-bold text-danger">WhatsApp terputus — semua sequence DI-PAUSE</p>
+              <p className="text-xs text-muted">
+                Follow-up otomatis dihentikan sementara. Resume manual setelah reconnect.
+              </p>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => setWaStatus("connecting")}>
+              Cek Ulang Status
+            </Button>
+            <Button variant="primary" size="sm" onClick={() => setWaStatus("connected")}>
+              Simulasi Connect
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Settings grid — mobile: stack, desktop: 2 kolom */}
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        {/* Koneksi WhatsApp */}
+        {/* Koneksi WhatsApp — status bridge, BUKAN QR sendiri (PRD v0.4) */}
         <Card>
           <CardHeader
             title="Koneksi WhatsApp"
-            subtitle="WA Bridge di VPS — scan sekali, session tersimpan"
-            action={
-              waConnected ? (
-                <Badge variant="success">● Terhubung</Badge>
-              ) : (
-                <Badge variant="danger">○ Belum Connect</Badge>
-              )
-            }
+            subtitle="Status bridge di VPS — QR connect tetap di Hermes/Bridge"
+            action={<Badge variant={st.variant}>{st.label}</Badge>}
           />
           <CardBody className="space-y-4">
-            {!waConnected ? (
-              <>
-                <div className="rounded-lg border border-edge/60 bg-surface-2/50 p-4 text-center">
-                  <p className="text-sm text-muted">
-                    {showQr ? (
-                      <span className="flex flex-col items-center gap-3">
-                        <span className="text-xs text-faint">Scan QR ini dengan WhatsApp di HP (Linked Devices)</span>
-                        {/* QR dummy statis */}
-                        <span className="inline-block border border-edge bg-white p-2">
-                          <svg viewBox="0 0 120 120" className="h-40 w-40">
-                            {Array.from({ length: 21 }).map((_, r) =>
-                              Array.from({ length: 21 }).map((_, c) => {
-                                const isFinder = (r < 7 && c < 7) || (r < 7 && c > 13) || (r > 13 && c < 7);
-                                const on =
-                                  isFinder
-                                    ? (r === 0 || r === 6 || c === 0 || c === 6) || ((r >= 2 && r <= 4) && (c >= 2 && c <= 4))
-                                    : ((r * 7 + c * 13 + r * c * 3) % 9 < 4);
-                                return <rect key={`${r}-${c}`} x={c * 5} y={r * 5} width="4.2" height="4.2" fill={on ? "#0B0E14" : "#fff"} />;
-                              })
-                            )}
-                          </svg>
-                        </span>
-                        <span className="text-xs text-faint">QR akan refresh otomatis setiap 60 detik</span>
-                      </span>
-                    ) : (
-                      "Belum ada nomor WA terhubung"
-                    )}
-                  </p>
-                </div>
-                <Button
-                  className="w-full"
-                  onClick={() => setShowQr(true)}
-                  disabled={showQr}
-                >
-                  {showQr ? "Menunggu Scan..." : "📱 Connect WhatsApp"}
-                </Button>
-              </>
-            ) : (
+            {/* Simulasi status bridge (Phase 0) */}
+            <div>
+              <Label>Status Bridge (simulasi Phase 0)</Label>
+              <select
+                value={waStatus}
+                onChange={(e) => setWaStatus(e.target.value as BridgeStatus)}
+                className="w-full rounded-lg border border-edge bg-surface-2 px-3 py-2 text-sm text-slate-100 focus:border-accent/60 focus:outline-none focus:ring-2 focus:ring-accent/40"
+              >
+                <option value="disconnected">disconnected — belum connect</option>
+                <option value="connecting">connecting — socket handshake</option>
+                <option value="connected">connected — siap kirim & terima</option>
+                <option value="reconnecting">reconnecting — socket putus</option>
+                <option value="logged_out">logged_out — session expired/revoke</option>
+              </select>
+              <p className="mt-1.5 text-xs text-faint">{st.desc}</p>
+            </div>
+
+            {waStatus === "connected" ? (
               <div className="rounded-lg border border-success/25 bg-success/5 p-4">
                 <p className="text-sm font-bold text-success">WhatsApp terhubung ✅</p>
-                <p className="mt-1 text-xs text-muted">Nomor: +62 812-3456-7890 · Session tersimpan di VPS</p>
+                <p className="mt-1 text-xs text-muted">Nomor: +62 812-3456-7890 · Session tersimpan di VPS (bridge)</p>
                 <div className="mt-3 flex gap-2">
-                  <Button variant="outline" size="sm">Ganti Nomor</Button>
-                  <Button variant="danger" size="sm">Putuskan</Button>
+                  <Button variant="outline" size="sm">Buka UI Bridge</Button>
+                  <Button variant="danger" size="sm">Logout / Putuskan</Button>
                 </div>
               </div>
+            ) : (
+              <div className="rounded-lg border border-edge/60 bg-surface-2/50 p-4">
+                <p className="text-sm font-semibold text-slate-200">Scan QR di Hermes/Bridge</p>
+                <p className="mt-1 text-xs leading-relaxed text-muted">
+                  Mina-UI gak bikin QR connect sendiri — QR lifecycle tanggung jawab bridge.
+                  Buka UI bridge di VPS, scan sekali, session tersimpan otomatis.
+                </p>
+                <Button variant="outline" size="sm" className="mt-3">🔗 Buka UI Bridge →</Button>
+              </div>
             )}
+
+            <div className="rounded-lg border border-edge/60 bg-surface-2/50 p-3 text-[11px] text-muted">
+              <p className="font-bold uppercase tracking-wider text-faint">State status bridge</p>
+              <div className="mt-2 grid grid-cols-2 gap-1.5">
+                {Object.entries(statusMeta).map(([key, s]) => (
+                  <span key={key} className="flex items-center gap-1.5">
+                    <span className={cn("h-1.5 w-1.5 rounded-full", s.dot)} />
+                    {key} — {s.label.replace(/[○●]/g, "").trim()}
+                  </span>
+                ))}
+              </div>
+              <p className="mt-2 text-faint">⚠️ Disconnect → semua sequence PAUSE (resume manual).</p>
+            </div>
           </CardBody>
         </Card>
 
@@ -109,7 +144,7 @@ export default function SettingsPage() {
               </div>
             </div>
             <div className="rounded-lg border border-edge/60 bg-surface-2/50 p-3 text-xs text-muted">
-              🎲 Delay random ±20% otomatis · max 1 pesan/kontak/hari · unsubscribe-aware
+              🎲 Delay random ±20% otomatis · max 1 pesan/kontak/hari · unsubscribe-aware · timezone WIB
             </div>
             <Button variant="outline" className="w-full">Simpan Pengaturan</Button>
           </CardBody>

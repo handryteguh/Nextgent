@@ -25,19 +25,19 @@ export function KpiCard({
   color?: KpiColor;
 }) {
   return (
-    <div className="rounded-xl border border-edge bg-surface p-5 shadow-[0_4px_24px_rgba(0,0,0,0.25)] transition-colors hover:border-edge/80">
+    <div className="rounded-xl border border-edge bg-surface p-4 shadow-[0_4px_24px_rgba(0,0,0,0.25)] transition-colors hover:border-edge/80 md:p-5">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-[11px] font-bold uppercase tracking-wider text-muted">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-muted md:text-[11px]">
             {label}
           </p>
-          <p className="mt-1.5 text-3xl font-extrabold tracking-tight text-slate-100">
+          <p className="mt-1 text-2xl font-extrabold tracking-tight text-slate-100 md:text-3xl">
             {value}
           </p>
-          {sub && <p className="mt-1 text-xs text-faint">{sub}</p>}
+          {sub && <p className="mt-1 text-[11px] leading-snug text-faint md:text-xs">{sub}</p>}
         </div>
         <div
-          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${iconColors[color]}`}
+          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg md:h-10 md:w-10 ${iconColors[color]}`}
         >
           {icon}
         </div>

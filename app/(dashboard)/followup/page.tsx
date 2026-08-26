@@ -16,7 +16,7 @@ const sequence = [
   { id: "fu3", name: "FU3", delay: "H+7 (168 jam)", template: "Halo {nama}, ini follow-up terakhir dari kami soal {topik}. Kabarin aja kalau masih minat ya." },
 ];
 
-// Data dummy progress
+// Data dummy progress — status sesuai PRD 5.4.6 (lengkap)
 const progress = [
   { id: 1, name: "Yan Azmi", step: "Menunggu FU1", due: "20 Agu, 09:00", status: "active" as const, replied: false },
   { id: 2, name: "Johar Tantowi", step: "FU1 terkirim", due: "18 Agu, 09:00", status: "info" as const, replied: false },
@@ -25,6 +25,8 @@ const progress = [
   { id: 5, name: "Maya Jaya", step: "Selesai", due: "—", status: "success" as const, replied: true },
   { id: 6, name: "Fajar Servis", step: "FU1 terkirim", due: "10 Agu, 08:45", status: "info" as const, replied: false },
   { id: 7, name: "Ranti Mebel", step: "Unsubscribe", due: "—", status: "danger" as const, replied: false },
+  { id: 8, name: "Ari Studio", step: "Paused (WA putus)", due: "—", status: "warning" as const, replied: false },
+  { id: 9, name: "Budi Santoso", step: "Gagal — retry habis", due: "—", status: "danger" as const, replied: false },
 ];
 
 export default function FollowupPage() {
@@ -38,6 +40,18 @@ export default function FollowupPage() {
     ) },
     { key: "due", header: "Jadwal Berikutnya", render: (r) => <span className={r.due === "—" ? "text-faint" : "text-slate-300"}>{r.due}</span> },
     { key: "replied", header: "Balasan", render: (r) => (r.replied ? <Badge variant="success">✔ Dibalas</Badge> : <span className="text-faint">—</span>) },
+    {
+      key: "actions",
+      header: "Aksi",
+      className: "text-right",
+      render: () => (
+        <div className="flex justify-end gap-1.5">
+          <Button variant="outline" size="sm" title="Lanjut ke step berikutnya">Lewati</Button>
+          <Button variant="outline" size="sm" title="Tunda jadwal">Tunda</Button>
+          <Button variant="danger" size="sm" title="Hentikan sequence">Stop</Button>
+        </div>
+      ),
+    },
   ];
 
   return (
@@ -48,15 +62,15 @@ export default function FollowupPage() {
         actions={<Button size="sm">+ Tambah Sequence</Button>}
       />
 
-      {/* Stats */}
-      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      {/* Stats — mobile: 2 kolom */}
+      <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-2 md:gap-4 xl:grid-cols-4">
         <KpiCard label="Dalam Sequence" value={314} sub="Sedang berjalan" color="accent" icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>} />
         <KpiCard label="Response Rate" value="68%" sub="Rata-rata semua step" color="success" icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>} />
         <KpiCard label="Anti-Banned" value="On" sub="Jam 08-20 · delay ±20%" color="info" icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>} />
         <KpiCard label="Hari Ini Terkirim" value="23" sub="FU1: 9 · FU2: 8 · FU3: 6" color="violet" icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>} />
       </div>
 
-      {/* Sequence editor */}
+      {/* Sequence editor & list — mobile: stack, desktop: 1/3 + 2/3 */}
       <div className="mb-6 grid grid-cols-1 gap-4 xl:grid-cols-3">
         <Card>
           <CardHeader title={editId ? "Edit Step" : "+ Tambah Step"} subtitle="Atur jeda & template pesan" />

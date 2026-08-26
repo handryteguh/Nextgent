@@ -25,6 +25,16 @@ const icons = {
       <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
     </svg>
   ),
+  coins: (
+    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+  ),
+  alert: (
+    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+    </svg>
+  ),
 };
 
 // Data dummy statis (Phase 0 — belum nyambung DB)
@@ -33,6 +43,8 @@ const kpis = [
   { label: "Chat Hari Ini", value: 47, sub: "12 belum dibaca", icon: icons.wa, color: "info" as const },
   { label: "Follow-up Aktif", value: 356, sub: "FU1: 182 · FU2: 98 · FU3: 76", icon: icons.bolt, color: "violet" as const },
   { label: "Response Rate", value: "68%", sub: "+5% dari minggu lalu", icon: icons.userCheck, color: "success" as const },
+  { label: "Deal Aktif", value: "Rp 4,2jt", sub: "6 deal open · 5 di Negotiation", icon: icons.coins, color: "orange" as const },
+  { label: "Task Overdue", value: 3, sub: "1 jatuh tempo hari ini", icon: icons.alert, color: "danger" as const },
 ];
 
 // Data dummy chart — 14 hari terakhir
@@ -57,14 +69,29 @@ export default function DashboardPage() {
         actions={<Button variant="outline" size="sm">↻ Refresh</Button>}
       />
 
-      {/* KPI Cards */}
-      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      {/* KPI Cards — mobile-first: 2 kolom di HP, 3 di tablet, 6 di desktop */}
+      <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4 xl:grid-cols-6">
         {kpis.map((k) => (
           <KpiCard key={k.label} label={k.label} value={k.value} sub={k.sub} icon={k.icon} color={k.color} />
         ))}
       </div>
 
-      {/* Charts row */}
+      {/* Banner disconnect WA → sequence pause (PRD 5.1) — statis, nanti dari GET /status */}
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-danger/30 bg-danger/10 px-5 py-3.5">
+        <div className="flex items-center gap-3">
+          <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-danger" />
+          <div>
+            <p className="text-sm font-bold text-danger">WhatsApp terputus — semua sequence DI-PAUSE</p>
+            <p className="text-xs text-muted">Follow-up otomatis dihentikan sementara. Scan QR ulang di Hermes/Bridge, lalu resume manual.</p>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm">Buka UI Bridge</Button>
+          <Button variant="danger" size="sm">Resume Sequence</Button>
+        </div>
+      </div>
+
+      {/* Charts row — mobile: stack, desktop: 2/3 + 1/3 */}
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
         {/* Line chart - chat activity */}
         <Card className="xl:col-span-2">

@@ -18,7 +18,7 @@ export function FilterPills({
   onChange: (key: string) => void;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 md:mx-0 md:flex-wrap md:overflow-visible md:px-0 md:pb-0">
       {pills.map((p) => (
         <button
           key={p.key}
