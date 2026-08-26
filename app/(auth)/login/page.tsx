@@ -1,35 +1,84 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { cn } from "@/lib/utils";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [step, setStep] = useState<1 | 2>(1);
   const [pin, setPin] = useState("");
-  const [tries, setTries] = useState(0);
   const [locked, setLocked] = useState(false);
-  const [countdown, setCountdown] = useState(300); // 5 menit
+  const [countdown, setCountdown] = useState(0); // detik
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  // Statis Phase 0: simulasi verifikasi (pin apa pun di atas 4 digit diterima)
-  const handleVerifyPin = () => {
-    setTries((t) => t + 1);
-    if (tries + 1 >= 5) {
-      setLocked(true);
-      // hitung mundur sederhana (statis, gak beneran jalan di Phase 0)
-      setCountdown(300);
-      return;
+  // isLocked = true kalau countdown masih jalan atau locked flag aktif
+  const isLocked = locked || countdown > 0;
+
+  // Hitung mundur lockout
+  useEffect(() => {
+    if (countdown <= 0) return;
+    const t = setInterval(() => setCountdown((c) => Math.max(0, c - 1)), 1000);
+    return () => clearInterval(t);
+  }, [countdown]);
+
+  const handleVerifyPin = useCallback(async () => {
+    if (loading || isLocked) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pin }),
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (res.ok && data.ok) {
+        // Login sukses → dashboard
+        router.replace("/");
+        router.refresh();
+        return;
+      }
+
+      if (res.status === 429 && data.locked) {
+        setLocked(true);
+        setCountdown(data.minutes * 60);
+        setError(data.error);
+        return;
+      }
+
+      if (res.status === 401) {
+        const remaining = data.remaining ?? 0;
+        setError(
+          remaining > 0
+            ? `PIN salah — sisa ${remaining} percobaan`
+            : data.error || "PIN salah"
+        );
+        setPin("");
+        return;
+      }
+
+      setError(data.error || "Gagal login, coba lagi");
+    } catch {
+      setError("Gagal terhubung ke server");
+    } finally {
+      setLoading(false);
     }
-    setStep(2);
-  };
+  }, [pin, loading, isLocked, router]);
 
-  const handleVerifyOtp = () => {
-    // Phase 0: langsung ke dashboard (belum ada backend)
-    router.push("/");
-  };
+  // Submit dengan Enter
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Enter" && !loading && !isLocked) handleVerifyPin();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [handleVerifyPin, loading, isLocked]);
+
+  const fmt = (s: number) =>
+    `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-base px-4">
@@ -63,99 +112,45 @@ export default function LoginPage() {
             </p>
           </div>
 
-          {/* Stepper */}
-          <div className="mb-6 flex items-center justify-center gap-2">
-            <span
-              className={cn(
-                "h-1.5 rounded-full transition-all",
-                step === 1 ? "w-8 bg-accent" : "w-4 bg-edges/60"
-              )}
-            />
-            <span
-              className={cn(
-                "h-1.5 rounded-full transition-all",
-                step === 2 ? "w-8 bg-accent" : "w-4 bg-slate-600"
-              )}
-            />
-          </div>
-
           {/* Step label */}
           <p className="mb-4 text-center text-xs font-semibold uppercase tracking-wider text-muted">
-            <span className="text-accent">LANGKAH {step} </span>
-            — {step === 1 ? "MASUKIN PIN" : "VERIFIKASI"}
+            — MASUKIN PIN
           </p>
 
-          {step === 1 ? (
-            <>
-              <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-muted">
-                🔑 Master PIN
-              </label>
-              <Input
-                type="password"
-                inputMode="numeric"
-                placeholder="••••••"
-                value={pin}
-                onChange={(e) => setPin(e.target.value)}
-                disabled={locked}
-                className="text-center text-lg tracking-[0.5em]"
-                maxLength={6}
-              />
-              {tries > 0 && !locked && (
-                <p className="mt-2 text-center text-xs text-danger">
-                  PIN salah — percobaan ke-{tries}/5
+          <>
+            <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-muted">
+              🔑 Master PIN
+            </label>
+            <Input
+              type="password"
+              inputMode="numeric"
+              placeholder="••••••"
+              value={pin}
+              onChange={(e) => setPin(e.target.value)}
+              disabled={isLocked || loading}
+              className="text-center text-lg tracking-[0.5em]"
+              maxLength={8}
+            />
+            {error && !isLocked && (
+              <p className="mt-2 text-center text-xs text-danger">{error}</p>
+            )}
+            {isLocked && (
+              <div className="mt-3 rounded-lg border border-danger/30 bg-danger/10 p-3 text-center">
+                <p className="text-xs font-bold text-danger">🔒 Terlalu banyak percobaan</p>
+                <p className="mt-1 text-xs text-muted">
+                  Coba lagi dalam {fmt(countdown)}
                 </p>
-              )}
-              {locked && (
-                <div className="mt-3 rounded-lg border border-danger/30 bg-danger/10 p-3 text-center">
-                  <p className="text-xs font-bold text-danger">🔒 Terlalu banyak percobaan</p>
-                  <p className="mt-1 text-xs text-muted">
-                    Coba lagi dalam {Math.floor(countdown / 60)}:{String(countdown % 60).padStart(2, "0")}
-                  </p>
-                </div>
-              )}
-              <Button
-                className="mt-4 w-full py-2.5"
-                size="lg"
-                disabled={locked || pin.length < 4}
-                onClick={handleVerifyPin}
-              >
-                Verifikasi PIN
-              </Button>
-              {!locked && tries > 0 && (
-                <button
-                  onClick={() => setTries(0)}
-                  className="mt-3 w-full text-center text-xs text-muted hover:text-slate-200"
-                >
-                  Reset percobaan
-                </button>
-              )}
-            </>
-          ) : (
-            <>
-              <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-muted">
-                🔐 Kode Verifikasi (2FA)
-              </label>
-              <Input
-                type="text"
-                inputMode="numeric"
-                placeholder="••••••"
-                maxLength={6}
-                className="text-center text-lg tracking-[0.5em]"
-              />
-              <p className="mt-2 text-center text-xs text-muted">
-                Masukkan kode dari aplikasi autentikator (statis di Phase 0)
-              </p>
-              <Button className="mt-4 w-full py-2.5" size="lg" onClick={handleVerifyOtp}>
-                Masuk Dashboard
-              </Button>
-              <button
-                onClick={() => setStep(1)}
-                className="mt-3 w-full text-center text-xs text-muted hover:text-slate-200"
-              >
-                ← Kembali
-              </button>
-            </>
-          )}
+              </div>
+            )}
+            <Button
+              className="mt-4 w-full py-2.5"
+              size="lg"
+              disabled={isLocked || loading || pin.length < 4}
+              onClick={handleVerifyPin}
+            >
+              {loading ? "Memverifikasi…" : "Verifikasi PIN"}
+            </Button>
+          </>
         </div>
 
         <p className="mt-4 text-center text-[11px] font-medium text-faint">
