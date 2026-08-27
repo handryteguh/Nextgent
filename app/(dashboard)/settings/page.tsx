@@ -1,16 +1,35 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input, Label } from "@/components/ui/input";
+import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
-// ⚠️ Prototipe statis Phase 0 — status bridge masih simulasi.
-// Nanti di Phase 1: baca dari GET /status di bridge (VPS).
+// ============================================================
+// Types
+// ============================================================
 type BridgeStatus = "disconnected" | "connecting" | "connected" | "reconnecting" | "logged_out";
+
+interface AppSettings {
+  fu_delay_1: string;
+  fu_delay_2: string;
+  fu_delay_3: string;
+  send_start: string;
+  send_stop: string;
+  app_version: string;
+}
+
+const DEFAULT_SETTINGS: AppSettings = {
+  fu_delay_1: "24",
+  fu_delay_2: "72",
+  fu_delay_3: "168",
+  send_start: "08:00",
+  send_stop: "20:00",
+  app_version: "0.1.0",
+};
 
 const statusMeta: Record<BridgeStatus, { label: string; variant: "default" | "success" | "danger" | "warning" | "info"; dot: string; desc: string }> = {
   disconnected: { label: "○ Belum Connect", variant: "danger", dot: "bg-danger", desc: "Belum ada nomor WA terhubung ke bridge." },
@@ -20,179 +39,277 @@ const statusMeta: Record<BridgeStatus, { label: string; variant: "default" | "su
   logged_out: { label: "○ Session Expired", variant: "danger", dot: "bg-danger", desc: "Session di-revoke dari HP / expired. Scan QR ulang di UI bridge." },
 };
 
-export default function SettingsPage() {
-  // Simulasi: dropdown biar bisa preview semua state (Phase 0)
-  const [waStatus, setWaStatus] = useState<BridgeStatus>("connected");
+// ============================================================
+// Komponen kecil: row setting dengan label
+// ============================================================
+function SettingRow({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-wrap items-start justify-between gap-3 py-3 border-b border-edge/40 last:border-0">
+      <div className="min-w-0">
+        <p className="text-sm font-semibold text-slate-200">{label}</p>
+        {hint && <p className="mt-0.5 text-xs text-muted">{hint}</p>}
+      </div>
+      <div className="shrink-0">{children}</div>
+    </div>
+  );
+}
 
+// ============================================================
+// Halaman Pengaturan
+// ============================================================
+export default function SettingsPage() {
+  // WA Bridge — simulasi Phase 0 (bridge belum ada)
+  const [waStatus] = useState<BridgeStatus>("disconnected");
   const st = statusMeta[waStatus];
 
-  return (
-    <div>
-      <PageHeader title="Pengaturan" subtitle="Konfigurasi aplikasi & koneksi WhatsApp (statis)" />
+  // Settings dari DB
+  const [cfg, setCfg] = useState<AppSettings>(DEFAULT_SETTINGS);
+  const [cfgLoading, setCfgLoading] = useState(true);
+  const [cfgSaving, setCfgSaving] = useState(false);
+  const [cfgMsg, setCfgMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
 
-      {/* Banner disconnect → sequence pause (sesuai PRD 5.1) */}
+  // Ganti PIN
+  const [currentPin, setCurrentPin] = useState("");
+  const [newPin, setNewPin] = useState("");
+  const [confirmPin, setConfirmPin] = useState("");
+  const [pinLoading, setPinLoading] = useState(false);
+  const [pinMsg, setPinMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+
+  // Load settings dari DB
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/api/settings");
+        const json = await res.json();
+        if (json.data) setCfg({ ...DEFAULT_SETTINGS, ...json.data });
+      } catch { /* silent */ }
+      finally { setCfgLoading(false); }
+    })();
+  }, []);
+
+  const handleSaveSettings = async () => {
+    setCfgSaving(true);
+    setCfgMsg(null);
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fu_delay_1: cfg.fu_delay_1,
+          fu_delay_2: cfg.fu_delay_2,
+          fu_delay_3: cfg.fu_delay_3,
+          send_start: cfg.send_start,
+          send_stop: cfg.send_stop,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) { setCfgMsg({ type: "err", text: json.error || "Gagal menyimpan" }); return; }
+      setCfgMsg({ type: "ok", text: `Tersimpan (${json.saved?.join(", ")})` });
+    } catch {
+      setCfgMsg({ type: "err", text: "Gagal terhubung ke server" });
+    } finally {
+      setCfgSaving(false);
+    }
+  };
+
+  const handleChangePin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPinMsg(null);
+    if (newPin !== confirmPin) {
+      setPinMsg({ type: "err", text: "Konfirmasi PIN tidak cocok" });
+      return;
+    }
+    setPinLoading(true);
+    try {
+      const res = await fetch("/api/auth/change-pin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ currentPin, newPin }),
+      });
+      const json = await res.json();
+      if (!res.ok) { setPinMsg({ type: "err", text: json.error || "Gagal ganti PIN" }); return; }
+      setPinMsg({ type: "ok", text: "PIN berhasil diganti!" });
+      setCurrentPin(""); setNewPin(""); setConfirmPin("");
+    } catch {
+      setPinMsg({ type: "err", text: "Gagal terhubung ke server" });
+    } finally {
+      setPinLoading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <PageHeader title="Pengaturan" subtitle="Konfigurasi aplikasi & koneksi WhatsApp" />
+
+      {/* Banner WA disconnect */}
       {waStatus !== "connected" && (
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-danger/30 bg-danger/10 px-5 py-3.5">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-danger/30 bg-danger/10 px-5 py-3.5">
           <div className="flex items-center gap-3">
             <span className={cn("h-2.5 w-2.5 rounded-full", st.dot)} />
             <div>
               <p className="text-sm font-bold text-danger">WhatsApp terputus — semua sequence DI-PAUSE</p>
-              <p className="text-xs text-muted">
-                Follow-up otomatis dihentikan sementara. Resume manual setelah reconnect.
-              </p>
+              <p className="text-xs text-muted">Follow-up otomatis dihentikan sementara. Resume manual setelah reconnect.</p>
             </div>
           </div>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={() => setWaStatus("connecting")}>
-              Cek Ulang Status
-            </Button>
-            <Button variant="primary" size="sm" onClick={() => setWaStatus("connected")}>
-              Simulasi Connect
-            </Button>
-          </div>
+          <Button size="sm" variant="ghost" className="border border-danger/40 text-danger hover:bg-danger/10">
+            Reconnect
+          </Button>
         </div>
       )}
 
-      {/* Settings grid — mobile: stack, desktop: 2 kolom */}
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        {/* Koneksi WhatsApp — status bridge, BUKAN QR sendiri (PRD v0.4) */}
+      <div className="grid gap-6 lg:grid-cols-2">
+
+        {/* 1. Koneksi WhatsApp */}
         <Card>
           <CardHeader
-            title="Koneksi WhatsApp"
-            subtitle="Status bridge di VPS — QR connect tetap di Hermes/Bridge"
+            title="📱 Koneksi WhatsApp"
             action={<Badge variant={st.variant}>{st.label}</Badge>}
           />
           <CardBody className="space-y-4">
-            {/* Simulasi status bridge (Phase 0) */}
-            <div>
-              <Label>Status Bridge (simulasi Phase 0)</Label>
-              <select
-                value={waStatus}
-                onChange={(e) => setWaStatus(e.target.value as BridgeStatus)}
-                className="w-full rounded-lg border border-edge bg-surface-2 px-3 py-2 text-sm text-slate-100 focus:border-accent/60 focus:outline-none focus:ring-2 focus:ring-accent/40"
-              >
-                <option value="disconnected">disconnected — belum connect</option>
-                <option value="connecting">connecting — socket handshake</option>
-                <option value="connected">connected — siap kirim & terima</option>
-                <option value="reconnecting">reconnecting — socket putus</option>
-                <option value="logged_out">logged_out — session expired/revoke</option>
-              </select>
-              <p className="mt-1.5 text-xs text-faint">{st.desc}</p>
+            <p className="text-xs text-muted">{st.desc}</p>
+            <div className="rounded-lg border border-edge/60 bg-surface-2/50 px-4 py-3 text-xs text-muted">
+              Bridge WA akan tersedia setelah integrasi VPS selesai (Phase 3). Saat ini semua sequence berjalan manual.
             </div>
+            <div className="flex gap-2">
+              <Button size="sm" variant="ghost" className="flex-1" disabled>
+                Scan QR
+              </Button>
+              <Button size="sm" variant="ghost" className="flex-1" disabled>
+                Disconnect
+              </Button>
+            </div>
+          </CardBody>
+        </Card>
 
-            {waStatus === "connected" ? (
-              <div className="rounded-lg border border-success/25 bg-success/5 p-4">
-                <p className="text-sm font-bold text-success">WhatsApp terhubung ✅</p>
-                <p className="mt-1 text-xs text-muted">Nomor: +62 812-3456-7890 · Session tersimpan di VPS (bridge)</p>
-                <div className="mt-3 flex gap-2">
-                  <Button variant="outline" size="sm">Buka UI Bridge</Button>
-                  <Button variant="danger" size="sm">Logout / Putuskan</Button>
-                </div>
-              </div>
+        {/* 2. Follow-up Default */}
+        <Card>
+          <CardHeader
+            title="⏱️ Follow-up Default"
+            action={cfgMsg ? (
+              <span className={cn("text-xs font-semibold", cfgMsg.type === "ok" ? "text-success" : "text-danger")}>
+                {cfgMsg.type === "ok" ? "✓" : "✗"} {cfgMsg.text}
+              </span>
+            ) : undefined}
+          />
+          <CardBody>
+            {cfgLoading ? (
+              <p className="py-4 text-center text-sm text-muted">Memuat…</p>
             ) : (
-              <div className="rounded-lg border border-edge/60 bg-surface-2/50 p-4">
-                <p className="text-sm font-semibold text-slate-200">Scan QR di Hermes/Bridge</p>
-                <p className="mt-1 text-xs leading-relaxed text-muted">
-                  Mina-UI gak bikin QR connect sendiri — QR lifecycle tanggung jawab bridge.
-                  Buka UI bridge di VPS, scan sekali, session tersimpan otomatis.
-                </p>
-                <Button variant="outline" size="sm" className="mt-3">🔗 Buka UI Bridge →</Button>
-              </div>
+              <>
+                <SettingRow label="FU1 — Delay" hint="Jam setelah kontak masuk">
+                  <div className="flex items-center gap-1.5">
+                    <Input
+                      type="number" min={1} max={720}
+                      value={cfg.fu_delay_1}
+                      onChange={(e) => setCfg((c) => ({ ...c, fu_delay_1: e.target.value }))}
+                      className="w-20 text-center"
+                    />
+                    <span className="text-xs text-muted">jam</span>
+                  </div>
+                </SettingRow>
+                <SettingRow label="FU2 — Delay" hint="Jam setelah FU1">
+                  <div className="flex items-center gap-1.5">
+                    <Input
+                      type="number" min={1} max={720}
+                      value={cfg.fu_delay_2}
+                      onChange={(e) => setCfg((c) => ({ ...c, fu_delay_2: e.target.value }))}
+                      className="w-20 text-center"
+                    />
+                    <span className="text-xs text-muted">jam</span>
+                  </div>
+                </SettingRow>
+                <SettingRow label="FU3 — Delay" hint="Jam setelah FU2">
+                  <div className="flex items-center gap-1.5">
+                    <Input
+                      type="number" min={1} max={720}
+                      value={cfg.fu_delay_3}
+                      onChange={(e) => setCfg((c) => ({ ...c, fu_delay_3: e.target.value }))}
+                      className="w-20 text-center"
+                    />
+                    <span className="text-xs text-muted">jam</span>
+                  </div>
+                </SettingRow>
+                <SettingRow label="Jam Kirim" hint="Pesan hanya dikirim dalam rentang ini">
+                  <div className="flex items-center gap-1.5">
+                    <Input type="time" value={cfg.send_start}
+                      onChange={(e) => setCfg((c) => ({ ...c, send_start: e.target.value }))}
+                      className="w-28" />
+                    <span className="text-xs text-muted">s/d</span>
+                    <Input type="time" value={cfg.send_stop}
+                      onChange={(e) => setCfg((c) => ({ ...c, send_stop: e.target.value }))}
+                      className="w-28" />
+                  </div>
+                </SettingRow>
+                <div className="pt-3">
+                  <Button onClick={handleSaveSettings} disabled={cfgSaving} className="w-full">
+                    {cfgSaving ? "Menyimpan…" : "Simpan Pengaturan FU"}
+                  </Button>
+                </div>
+              </>
             )}
-
-            <div className="rounded-lg border border-edge/60 bg-surface-2/50 p-3 text-[11px] text-muted">
-              <p className="font-bold uppercase tracking-wider text-faint">State status bridge</p>
-              <div className="mt-2 grid grid-cols-2 gap-1.5">
-                {Object.entries(statusMeta).map(([key, s]) => (
-                  <span key={key} className="flex items-center gap-1.5">
-                    <span className={cn("h-1.5 w-1.5 rounded-full", s.dot)} />
-                    {key} — {s.label.replace(/[○●]/g, "").trim()}
-                  </span>
-                ))}
-              </div>
-              <p className="mt-2 text-faint">⚠️ Disconnect → semua sequence PAUSE (resume manual).</p>
-            </div>
           </CardBody>
         </Card>
 
-        {/* Sequence settings */}
+        {/* 3. Keamanan — Ganti PIN */}
         <Card>
-          <CardHeader title="Follow-up Default" subtitle="Interval & jam kirim safety engine" />
-          <CardBody className="space-y-4">
-            <div className="grid grid-cols-3 gap-3">
+          <CardHeader title="🔒 Keamanan" />
+          <CardBody>
+            <form onSubmit={handleChangePin} className="space-y-3">
               <div>
-                <Label>FU1 (jam)</Label>
-                <Input type="number" defaultValue={24} />
+                <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-muted">PIN Lama</label>
+                <Input
+                  type="password" inputMode="numeric" placeholder="••••••"
+                  value={currentPin} onChange={(e) => setCurrentPin(e.target.value)}
+                  maxLength={8} required
+                />
               </div>
               <div>
-                <Label>FU2 (jam)</Label>
-                <Input type="number" defaultValue={72} />
+                <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-muted">PIN Baru</label>
+                <Input
+                  type="password" inputMode="numeric" placeholder="••••••"
+                  value={newPin} onChange={(e) => setNewPin(e.target.value)}
+                  maxLength={8} required
+                />
               </div>
               <div>
-                <Label>FU3 (jam)</Label>
-                <Input type="number" defaultValue={168} />
+                <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-muted">Konfirmasi PIN Baru</label>
+                <Input
+                  type="password" inputMode="numeric" placeholder="••••••"
+                  value={confirmPin} onChange={(e) => setConfirmPin(e.target.value)}
+                  maxLength={8} required
+                />
               </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label>Jam Mulai Kirim</Label>
-                <Input type="time" defaultValue="08:00" />
-              </div>
-              <div>
-                <Label>Jam Berhenti</Label>
-                <Input type="time" defaultValue="20:00" />
-              </div>
-            </div>
-            <div className="rounded-lg border border-edge/60 bg-surface-2/50 p-3 text-xs text-muted">
-              🎲 Delay random ±20% otomatis · max 1 pesan/kontak/hari · unsubscribe-aware · timezone WIB
-            </div>
-            <Button variant="outline" className="w-full">Simpan Pengaturan</Button>
+              {pinMsg && (
+                <p className={cn("text-xs font-semibold", pinMsg.type === "ok" ? "text-success" : "text-danger")}>
+                  {pinMsg.type === "ok" ? "✓" : "✗"} {pinMsg.text}
+                </p>
+              )}
+              <Button type="submit" disabled={pinLoading} className="w-full">
+                {pinLoading ? "Memproses…" : "Ganti PIN"}
+              </Button>
+            </form>
           </CardBody>
         </Card>
 
-        {/* Keamanan */}
+        {/* 4. Tentang */}
         <Card>
-          <CardHeader title="Keamanan" subtitle="Kebijakan login & proteksi" />
-          <CardBody className="space-y-4">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label>Maks Percobaan Login</Label>
-                <Input type="number" defaultValue={5} />
+          <CardHeader title="ℹ️ Tentang Aplikasi" />
+          <CardBody className="space-y-2">
+            {[
+              { label: "Versi", value: `v${cfg.app_version}` },
+              { label: "Stack", value: "Next.js 16.3 + React 19 + Tailwind 4" },
+              { label: "Database", value: "SQLite + Drizzle ORM ✅" },
+              { label: "Auth", value: "PIN (scrypt) + HMAC session cookie" },
+              { label: "WA Bridge", value: "VPS solusiadmin-core-vps (Phase 3)" },
+            ].map(({ label, value }) => (
+              <div key={label} className="flex justify-between rounded-lg border border-edge/60 bg-surface-2/50 px-4 py-3">
+                <span className="text-muted">{label}</span>
+                <span className="font-bold text-slate-100">{value}</span>
               </div>
-              <div>
-                <Label>Cooldown (menit)</Label>
-                <Input type="number" defaultValue={5} />
-              </div>
-            </div>
-            <div className="rounded-lg border border-edge/60 bg-surface-2/50 p-3 text-xs text-muted">
-              Setelah 5x salah → lockout: form disabled + hitung mundur. Login sukses me-reset counter.
-            </div>
-            <Button variant="outline" className="w-full">Ganti Master PIN</Button>
+            ))}
           </CardBody>
         </Card>
 
-        {/* Tentang */}
-        <Card>
-          <CardHeader title="Tentang" subtitle="Informasi aplikasi" />
-          <CardBody className="space-y-3 text-sm">
-            <div className="flex justify-between rounded-lg border border-edge/60 bg-surface-2/50 px-4 py-3">
-              <span className="text-muted">Versi</span>
-              <span className="font-bold text-slate-100">v0.1.0 (Phase 0 — Frontend Statis)</span>
-            </div>
-            <div className="flex justify-between rounded-lg border border-edge/60 bg-surface-2/50 px-4 py-3">
-              <span className="text-muted">Database</span>
-              <span className="font-bold text-slate-100">SQLite + Drizzle ORM (belum aktif)</span>
-            </div>
-            <div className="flex justify-between rounded-lg border border-edge/60 bg-surface-2/50 px-4 py-3">
-              <span className="text-muted">WA Bridge</span>
-              <span className="font-bold text-slate-100">VPS solusiadmin-core-vps</span>
-            </div>
-            <div className="flex justify-between rounded-lg border border-edge/60 bg-surface-2/50 px-4 py-3">
-              <span className="text-muted">SSOT UI</span>
-              <span className="font-bold text-slate-100">D:\DOCUMENT\Mina-UI-SSOT</span>
-            </div>
-          </CardBody>
-        </Card>
       </div>
     </div>
   );
