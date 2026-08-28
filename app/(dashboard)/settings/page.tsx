@@ -70,6 +70,32 @@ export default function SettingsPage() {
   const [cfgSaving, setCfgSaving] = useState(false);
   const [cfgMsg, setCfgMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
 
+  // WA Bridge test
+  const [waTesting, setWaTesting] = useState(false);
+  const [waTestResult, setWaTestResult] = useState<{
+    ok: boolean;
+    connected?: boolean;
+    hermes_version?: string;
+    wa_connected?: boolean;
+    wa_reason?: string;
+    reason?: string;
+    url?: string | null;
+  } | null>(null);
+
+  const handleTestWaBridge = async () => {
+    setWaTesting(true);
+    setWaTestResult(null);
+    try {
+      const res = await fetch("/api/wa/test");
+      const data = await res.json();
+      setWaTestResult(data);
+    } catch {
+      setWaTestResult({ ok: false, reason: "Gagal terhubung ke server" });
+    } finally {
+      setWaTesting(false);
+    }
+  };
+
   // Ganti PIN
   const [currentPin, setCurrentPin] = useState("");
   const [newPin, setNewPin] = useState("");
@@ -172,14 +198,52 @@ export default function SettingsPage() {
           <CardBody className="space-y-4">
             <p className="text-xs text-muted">{st.desc}</p>
             <div className="rounded-lg border border-edge/60 bg-surface-2/50 px-4 py-3 text-xs text-muted">
-              Bridge WA akan tersedia setelah integrasi VPS selesai (Phase 3). Saat ini semua sequence berjalan manual.
+              WA bridge via Hermes Agent (VPS) — akses melalui TailScale. Isi <span className="font-mono text-accent">HERMES_VPS_URL</span> di <span className="font-mono text-accent">.env.local</span> lalu restart dev server.
             </div>
+
+            {/* Hasil test */}
+            {waTestResult && (
+              <div className={cn(
+                "rounded-lg border px-4 py-3 text-xs space-y-1",
+                waTestResult.ok
+                  ? "border-success/30 bg-success/5 text-success"
+                  : "border-danger/30 bg-danger/5 text-danger"
+              )}>
+                <p className="font-semibold">
+                  {waTestResult.ok ? "✓ Hermes VPS Terhubung" : "✗ Gagal Connect"}
+                </p>
+                {waTestResult.hermes_version && (
+                  <p className="text-muted">Versi: {waTestResult.hermes_version}</p>
+                )}
+                {waTestResult.wa_connected !== undefined && (
+                  <p className={waTestResult.wa_connected ? "text-success" : "text-warning"}>
+                    WA: {waTestResult.wa_connected ? "✓ Terhubung" : "✗ Belum scan QR"}
+                  </p>
+                )}
+                {waTestResult.wa_reason && (
+                  <p className="text-muted">{waTestResult.wa_reason}</p>
+                )}
+                {waTestResult.reason && (
+                  <p>{waTestResult.reason}</p>
+                )}
+                {waTestResult.url && (
+                  <p className="font-mono text-[10px] text-faint">{waTestResult.url}</p>
+                )}
+              </div>
+            )}
+
             <div className="flex gap-2">
-              <Button size="sm" variant="ghost" className="flex-1" disabled>
-                Scan QR
+              <Button
+                size="sm"
+                variant="ghost"
+                className="flex-1"
+                onClick={handleTestWaBridge}
+                disabled={waTesting}
+              >
+                {waTesting ? "Testing…" : "🔌 Test Koneksi WA Bridge"}
               </Button>
               <Button size="sm" variant="ghost" className="flex-1" disabled>
-                Disconnect
+                Scan QR
               </Button>
             </div>
           </CardBody>
