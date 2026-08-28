@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { KpiCard } from "@/components/ui/kpi-card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type Summary = {
@@ -12,6 +13,8 @@ type Summary = {
   tasks: { overdue: number; pending: number; total: number };
   followup: { active: number; paused: number; completed: number };
   deals: { active: number; pipelineValue: number; won: number };
+  sequences: { total: number; active: number };
+  wa: { connected: boolean };
 };
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
@@ -36,23 +39,23 @@ const icons = {
       <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
     </svg>
   ),
-  coins: (
-    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-    </svg>
-  ),
   alert: (
     <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+    </svg>
+  ),
+  sequence: (
+    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
     </svg>
   ),
 };
 
 // ── Line Chart SVG ─────────────────────────────────────────────────────────────
 function LineChart({ days, chat, fu }: { days: string[]; chat: number[]; fu: number[] }) {
-  const W = 640;
-  const H = 220;
-  const P = { l: 36, r: 12, t: 12, b: 30 };
+  const W = 600;
+  const H = 200;
+  const P = { l: 32, r: 12, t: 12, b: 28 };
   const max = Math.max(...chat, ...fu, 1) * 1.15;
   const stepX = (W - P.l - P.r) / (days.length - 1);
 
@@ -78,47 +81,44 @@ function LineChart({ days, chat, fu }: { days: string[]; chat: number[]; fu: num
   };
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
-      <defs>
-        <linearGradient id="gradFu" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#F5C044" stopOpacity="0.25" />
-          <stop offset="100%" stopColor="#F5C044" stopOpacity="0" />
-        </linearGradient>
-        <linearGradient id="gradChat" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#22D3EE" stopOpacity="0.2" />
-          <stop offset="100%" stopColor="#22D3EE" stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      {/* grid */}
-      {[0.25, 0.5, 0.75, 1].map((f) => (
-        <line
-          key={f}
-          x1={P.l} x2={W - P.r}
-          y1={P.t + H - P.b - f * (H - P.t - P.b)}
-          y2={P.t + H - P.b - f * (H - P.t - P.b)}
-          stroke="#1E293B" strokeWidth="0.5"
-        />
-      ))}
-      {/* areas */}
-      <path d={areaPath(fu)} fill="url(#gradFu)" />
-      <path d={areaPath(chat)} fill="url(#gradChat)" />
-      {/* lines */}
-      <path d={path(fu)} fill="none" stroke="#F5C044" strokeWidth="2.5" strokeLinecap="round" />
-      <path d={path(chat)} fill="none" stroke="#22D3EE" strokeWidth="2.5" strokeLinecap="round" />
-      {/* dots */}
-      {fu.map((v, i) => (
-        <circle key={i} cx={P.l + i * stepX} cy={P.t + H - P.b - (v / max) * (H - P.t - P.b)} r="3" fill="#F5C044" />
-      ))}
-      {chat.map((v, i) => (
-        <circle key={i} cx={P.l + i * stepX} cy={P.t + H - P.b - (v / max) * (H - P.t - P.b)} r="3" fill="#22D3EE" />
-      ))}
-      {/* x labels */}
-      {days.map((d, i) => (
-        <text key={d} x={P.l + i * stepX} y={H - 8} textAnchor="middle" fontSize="9" fill="#475569" fontFamily="Inter, sans-serif">
-          {i % 2 === 0 ? d : ""}
-        </text>
-      ))}
-    </svg>
+    <div className="w-full overflow-hidden">
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" preserveAspectRatio="xMidYMid meet">
+        <defs>
+          <linearGradient id="gradFu" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#F5C044" stopOpacity="0.25" />
+            <stop offset="100%" stopColor="#F5C044" stopOpacity="0" />
+          </linearGradient>
+          <linearGradient id="gradChat" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#22D3EE" stopOpacity="0.2" />
+            <stop offset="100%" stopColor="#22D3EE" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        {[0.25, 0.5, 0.75, 1].map((f) => (
+          <line
+            key={f}
+            x1={P.l} x2={W - P.r}
+            y1={P.t + H - P.b - f * (H - P.t - P.b)}
+            y2={P.t + H - P.b - f * (H - P.t - P.b)}
+            stroke="#1E293B" strokeWidth="0.5"
+          />
+        ))}
+        <path d={areaPath(fu)} fill="url(#gradFu)" />
+        <path d={areaPath(chat)} fill="url(#gradChat)" />
+        <path d={path(fu)} fill="none" stroke="#F5C044" strokeWidth="2" strokeLinecap="round" />
+        <path d={path(chat)} fill="none" stroke="#22D3EE" strokeWidth="2" strokeLinecap="round" />
+        {fu.map((v, i) => (
+          <circle key={i} cx={P.l + i * stepX} cy={P.t + H - P.b - (v / max) * (H - P.t - P.b)} r="2.5" fill="#F5C044" />
+        ))}
+        {chat.map((v, i) => (
+          <circle key={i} cx={P.l + i * stepX} cy={P.t + H - P.b - (v / max) * (H - P.t - P.b)} r="2.5" fill="#22D3EE" />
+        ))}
+        {days.map((d, i) => (
+          <text key={d} x={P.l + i * stepX} y={H - 6} textAnchor="middle" fontSize="8" fill="#475569" fontFamily="Inter, sans-serif">
+            {i % 2 === 0 ? d : ""}
+          </text>
+        ))}
+      </svg>
+    </div>
   );
 }
 
@@ -138,7 +138,7 @@ function DonutChart({ data }: { data: { label: string; value: number; color: str
 
   return (
     <div className="relative flex items-center justify-center">
-      <svg viewBox="0 0 180 180" className="h-44 w-44">
+      <svg viewBox="0 0 180 180" className="h-40 w-40">
         <circle cx="90" cy="90" r={R} fill="none" stroke="#1E293B" strokeWidth="20" />
         {segments.map((s) => (
           <circle
@@ -174,10 +174,35 @@ function getLast14Days() {
   return days;
 }
 
-// Chart data placeholder — nanti bisa diganti data real dari inbox/followup log
 const chartDays = getLast14Days();
-const fuChartData = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]; // placeholder sampai ada log table
-const chatChartData = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]; // placeholder sampai bridge connect
+const fuChartData = Array(14).fill(0);
+const chatChartData = Array(14).fill(0);
+
+// ── WA Status Banner ──────────────────────────────────────────────────────────
+function WaBanner({ connected }: { connected: boolean }) {
+  if (connected) {
+    return (
+      <div className="mb-5 flex items-center gap-3 rounded-xl border border-success/30 bg-success/10 px-4 py-3">
+        <span className="flex h-2 w-2 items-center justify-center">
+          <span className="absolute inline-flex h-2 w-2 animate-ping rounded-full bg-success opacity-75" />
+          <span className="relative inline-flex h-2 w-2 rounded-full bg-success" />
+        </span>
+        <p className="text-sm font-semibold text-success">WhatsApp terhubung — bridge aktif</p>
+      </div>
+    );
+  }
+  return (
+    <div className="mb-5 flex items-center justify-between gap-3 rounded-xl border border-danger/30 bg-danger/10 px-4 py-3">
+      <div className="flex items-center gap-3">
+        <span className="relative flex h-2 w-2 shrink-0">
+          <span className="relative inline-flex h-2 w-2 rounded-full bg-danger" />
+        </span>
+        <p className="text-sm font-semibold text-danger">WhatsApp terputus — bridge belum terhubung</p>
+      </div>
+      <Badge variant="warning">Offline</Badge>
+    </div>
+  );
+}
 
 // ── Main ───────────────────────────────────────────────────────────────────────
 export default function DashboardPage() {
@@ -239,7 +264,6 @@ export default function DashboardPage() {
     },
   ];
 
-  // Donut data dari summary real
   const fuTiers = [
     { label: "Aktif", value: s?.followup.active ?? 0, color: "#22D3EE" },
     { label: "Paused", value: s?.followup.paused ?? 0, color: "#FB923C" },
@@ -254,16 +278,18 @@ export default function DashboardPage() {
         actions={<Button variant="outline" size="sm" onClick={() => fetchSummary()}>↻ Refresh</Button>}
       />
 
-      {/* KPI Cards — 4 kolom, layout sama kayak Phase 0 */}
+      {/* WA Status Banner */}
+      <WaBanner connected={s?.wa.connected ?? false} />
+
+      {/* KPI Cards */}
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {kpis.map((k) => (
           <KpiCard key={k.label} label={k.label} value={k.value} sub={k.sub} icon={k.icon} color={k.color} />
         ))}
       </div>
 
-      {/* Charts row — Line chart 2/3 + Donut 1/3 */}
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-        {/* Line chart aktivitas */}
+      {/* Charts row — line chart 2/3 + donut 1/3 */}
+      <div className="mb-4 grid grid-cols-1 gap-4 xl:grid-cols-3">
         <Card className="xl:col-span-2">
           <CardHeader
             title="Aktivitas Chat"
@@ -274,7 +300,7 @@ export default function DashboardPage() {
                   <span className="h-2 w-2 rounded-full bg-info" /> Chat masuk
                 </span>
                 <span className="flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full bg-accent" style={{ backgroundColor: "#F5C044" }} /> Follow-up
+                  <span className="h-2 w-2 rounded-full" style={{ backgroundColor: "#F5C044" }} /> Follow-up
                 </span>
               </div>
             }
@@ -282,17 +308,17 @@ export default function DashboardPage() {
           <CardBody>
             <LineChart days={chartDays} chat={chatChartData} fu={fuChartData} />
             <p className="mt-2 text-center text-[10px] text-faint">
-              Data chat aktif setelah bridge WA terhubung · Follow-up log tersedia setelah scheduler berjalan
+              Data aktif setelah bridge WA terhubung · Follow-up log tersedia setelah scheduler berjalan
             </p>
           </CardBody>
         </Card>
 
-        {/* Donut — status follow-up live dari DB */}
+        {/* Donut FU */}
         <Card>
           <CardHeader title="Status Follow-up" subtitle="Distribusi seluruh sequence job" />
           <CardBody className="flex flex-col items-center">
             <DonutChart data={fuTiers} />
-            <div className="mt-5 w-full space-y-2.5">
+            <div className="mt-4 w-full space-y-2">
               {fuTiers.map((t) => (
                 <div key={t.label} className="flex items-center justify-between gap-3 text-sm">
                   <span className="flex items-center gap-2 text-slate-300">
@@ -303,22 +329,91 @@ export default function DashboardPage() {
                 </div>
               ))}
             </div>
-            {/* Pipeline mini */}
-            <div className="mt-4 w-full rounded-lg border border-edge/40 bg-surface-2/40 px-3 py-2.5">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-muted">Pipeline Deals</p>
-              <div className="mt-2 flex items-center justify-between text-sm">
+          </CardBody>
+        </Card>
+      </div>
+
+      {/* Bottom row — Sequences + Pipeline */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        {/* Sequences */}
+        <Card>
+          <CardHeader title="Sequences" subtitle="Template follow-up otomatis" />
+          <CardBody>
+            <div className="flex items-center gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-violet/10 text-violet">
+                {icons.sequence}
+              </div>
+              <div>
+                <p className="text-3xl font-extrabold text-slate-100">{loading ? "—" : (s?.sequences.total ?? 0)}</p>
+                <p className="text-xs text-muted">{s ? `${s.sequences.active} aktif` : "Memuat..."}</p>
+              </div>
+            </div>
+            <div className="mt-4 space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-slate-300">Total sequences</span>
+                <span className="font-bold text-slate-100">{s?.sequences.total ?? "—"}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
                 <span className="text-slate-300">Aktif</span>
+                <span className="font-bold text-success">{s?.sequences.active ?? "—"}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-slate-300">Draft / nonaktif</span>
+                <span className="font-bold text-muted">
+                  {s ? (s.sequences.total - s.sequences.active) : "—"}
+                </span>
+              </div>
+            </div>
+          </CardBody>
+        </Card>
+
+        {/* Pipeline Deals */}
+        <Card>
+          <CardHeader title="Pipeline Deals" subtitle="Nilai open deals & konversi" />
+          <CardBody>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-slate-300">Deal aktif</span>
                 <span className="font-bold text-slate-100">{s?.deals.active ?? "—"}</span>
               </div>
               <div className="flex items-center justify-between text-sm">
-                <span className="text-slate-300">Nilai</span>
+                <span className="text-slate-300">Nilai pipeline</span>
                 <span className="font-bold text-accent">
                   Rp {((s?.deals.pipelineValue ?? 0) / 1000).toFixed(0)}rb
                 </span>
               </div>
               <div className="flex items-center justify-between text-sm">
-                <span className="text-slate-300">Won</span>
+                <span className="text-slate-300">Deal won</span>
                 <span className="font-bold text-success">{s?.deals.won ?? "—"}</span>
+              </div>
+              <div className="mt-2 rounded-lg border border-edge/40 bg-surface-2/40 px-3 py-2 text-xs text-muted">
+                Lihat detail Kanban di halaman <span className="text-accent">/deals</span>
+              </div>
+            </div>
+          </CardBody>
+        </Card>
+
+        {/* Tasks summary */}
+        <Card>
+          <CardHeader title="Tasks" subtitle="Tugas & reminder tim" />
+          <CardBody>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-slate-300">Total tasks</span>
+                <span className="font-bold text-slate-100">{s?.tasks.total ?? "—"}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-slate-300">Pending</span>
+                <span className="font-bold text-slate-100">{s?.tasks.pending ?? "—"}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-slate-300">Overdue</span>
+                <Badge variant={s && s.tasks.overdue > 0 ? "danger" : "default"}>
+                  {s?.tasks.overdue ?? "—"}
+                </Badge>
+              </div>
+              <div className="mt-2 rounded-lg border border-edge/40 bg-surface-2/40 px-3 py-2 text-xs text-muted">
+                Lihat semua tasks di halaman <span className="text-accent">/tasks</span>
               </div>
             </div>
           </CardBody>

@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { contacts, tasks, followupJobs, deals } from "@/db/schema";
 import { isAuthed } from "@/lib/auth";
 import { eq, sql } from "drizzle-orm";
+import { sequences } from "@/db/schema";
 
 // GET /api/summary — satu hit buat semua badge + KPI data
 // Dipake sidebar (badge) + dashboard (KPI) + bottom-nav
@@ -54,12 +55,19 @@ export async function GET() {
   const dealsPipelineValue = openDeals.reduce((sum, d) => sum + (d.value ?? 0), 0);
   const dealsWon = allDeals.filter((d) => d.status === "won").length;
 
+  // ── Sequences ─────────────────────────────────────────────
+  const allSequences = db.select({ id: sequences.id, enabled: sequences.enabled }).from(sequences).all();
+  const seqActive = allSequences.filter((s) => s.enabled).length;
+  const seqTotal = allSequences.length;
+
   return NextResponse.json({
     data: {
       contacts: { total: totalContacts, leads: totalLeads, customers: totalCustomers },
       tasks: { overdue: tasksOverdue, pending: tasksPending, total: allTasks.length },
       followup: { active: fuActive, paused: fuPaused, completed: fuCompleted },
       deals: { active: dealsActive, pipelineValue: dealsPipelineValue, won: dealsWon },
+      sequences: { total: seqTotal, active: seqActive },
+      wa: { connected: false }, // placeholder sampai bridge WA tersedia
     },
   });
 }
