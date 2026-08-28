@@ -36,9 +36,8 @@ export default function LoginPage() {
       const data = await res.json().catch(() => ({}));
 
       if (res.ok && data.ok) {
-        // Login sukses → dashboard
-        router.replace("/");
-        router.refresh();
+        // Login sukses → full reload supaya middleware baca cookie baru
+        window.location.href = "/";
         return;
       }
 

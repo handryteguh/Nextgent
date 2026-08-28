@@ -27,13 +27,15 @@ export async function GET() {
   for (const row of rows) data[row.key] = row.value;
 
   // Isi default kalau belum ada
-  const defaults: Record<SettingKey, string> = {
+  const defaults: Record<string, string> = {
     fu_delay_1: "24",
     fu_delay_2: "72",
     fu_delay_3: "168",
     send_start: "08:00",
     send_stop: "20:00",
     app_version: "0.1.0",
+    tailscale_ip: "",
+    tailscale_port: "3001",
   };
   for (const [k, v] of Object.entries(defaults)) {
     if (data[k] === undefined) data[k] = v;
