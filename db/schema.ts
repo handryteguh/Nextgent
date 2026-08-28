@@ -140,3 +140,16 @@ export const settings = sqliteTable("settings", {
   value: text("value"), // JSON string
   updatedAt: integer("updated_at").notNull().default(sql`(unixepoch() * 1000)`),
 });
+
+// ---------- MESSAGES (inbox WA) ----------
+// Diisi oleh: bridge Baileys (webhook) atau manual via API
+export const messages = sqliteTable("messages", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  phone: text("phone").notNull(),           // format 62xxx (tanpa @s.whatsapp.net)
+  direction: text("direction", { enum: ["in", "out"] }).notNull(), // in=dari kontak, out=dari kita
+  text: text("text").notNull(),
+  status: text("status", { enum: ["sent", "delivered", "read", "failed"] }).default("sent"),
+  waId: text("wa_id"),                       // message ID dari WA (untuk dedup)
+  contactId: integer("contact_id").references(() => contacts.id, { onDelete: "set null" }),
+  createdAt: integer("created_at").notNull().default(sql`(unixepoch() * 1000)`),
+});

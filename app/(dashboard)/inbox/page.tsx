@@ -1,160 +1,331 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
-// Data dummy chat (Phase 0)
-const chats = [
-  { id: 1, name: "Yan Azmi", wa: "628123456001", last: "Oke saya cek dulu ya, makasih infonya", time: "09:32", unread: 2, status: "Balas", online: true },
-  { id: 2, name: "Johar Tantowi", wa: "628123456002", last: "Untuk harga paketnya berapa ya?", time: "08:15", unread: 0, status: "FU1", online: false },
-  { id: 3, name: "Evi Yuslatin", wa: "628123456003", last: "Baik, nanti saya kabari lagi", time: "Kemarin", unread: 0, status: "FU2", online: false },
-  { id: 4, name: "Prasetyo Darmawan", wa: "628123456004", last: "Siap, deal. Kapan mulai bisa? 😄", time: "Kemarin", unread: 0, status: "Balas", online: true },
-  { id: 5, name: "Maya Jaya", wa: "628123456005", last: "Makasih ya kak", time: "17 Agu", unread: 0, status: "Selesai", online: false },
-  { id: 6, name: "Fajar Servis", wa: "628123456006", last: "Masih minat kok, cuma lagi sibuk", time: "15 Agu", unread: 0, status: "FU1", online: false },
-  { id: 7, name: "Ranti Mebel", wa: "628123456007", last: "Sudah tidak perlu, terima kasih", time: "12 Agu", unread: 0, status: "Unsub", online: false },
+// ── Types ─────────────────────────────────────────────────────────────────────
+type Convo = {
+  phone: string;
+  last_text: string;
+  last_direction: string;
+  last_at: number;
+  contact_name: string | null;
+  contact_id: number | null;
+  unread: number;
+};
+
+type Message = {
+  id: number;
+  phone: string;
+  direction: "in" | "out";
+  text: string;
+  status: string | null;
+  createdAt: number;
+};
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function fmtTime(ms: number): string {
+  const d = new Date(ms);
+  const now = new Date();
+  const diffDays = Math.floor((now.getTime() - ms) / 86400000);
+  if (diffDays === 0) return d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+  if (diffDays === 1) return "Kemarin";
+  if (diffDays < 7) return d.toLocaleDateString("id-ID", { weekday: "short" });
+  return d.toLocaleDateString("id-ID", { day: "numeric", month: "short" });
+}
+
+function initials(name: string | null, phone: string): string {
+  if (name) return name.split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase();
+  return phone.slice(-2);
+}
+
+const avatarColors = [
+  "bg-accent/20 text-accent",
+  "bg-violet/20 text-violet",
+  "bg-info/20 text-info",
+  "bg-success/20 text-success",
+  "bg-orange/20 text-orange",
 ];
 
-const messages = [
-  { id: 1, from: "them", text: "Halo, saya lihat iklan produknya. Masih tersedia?" },
-  { id: 2, from: "me", text: "Halo kak! Masih tersedia kok. Mau dibantu info apa ya?" },
-  { id: 3, from: "them", text: "Untuk harga paketnya berapa ya?" },
-  { id: 4, from: "me", text: "Untuk paket basic 150rb/bulan, pro 350rb/bulan ya kak. Bisa mulai kapan aja." },
-  { id: 5, from: "them", text: "Oke saya cek dulu ya, makasih infonya" },
-];
+function avatarColor(phone: string): string {
+  const idx = phone.split("").reduce((a, c) => a + c.charCodeAt(0), 0) % avatarColors.length;
+  return avatarColors[idx];
+}
 
+// ── WA Offline Banner ─────────────────────────────────────────────────────────
+function WaOfflineBanner() {
+  return (
+    <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-warning/30 bg-warning/10 px-4 py-3">
+      <div className="flex items-center gap-3">
+        <span className="relative flex h-2 w-2 shrink-0">
+          <span className="relative inline-flex h-2 w-2 rounded-full bg-warning" />
+        </span>
+        <p className="text-sm font-semibold text-warning">
+          Bridge WA belum terhubung — pesan baru belum masuk otomatis
+        </p>
+      </div>
+      <Badge variant="warning">Offline</Badge>
+    </div>
+  );
+}
+
+// ── Main ───────────────────────────────────────────────────────────────────────
 export default function InboxPage() {
-  const [activeId, setActiveId] = useState<number | null>(null);
+  const [convos, setConvos] = useState<Convo[]>([]);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [activePhone, setActivePhone] = useState<string | null>(null);
+  const [activeContact, setActiveContact] = useState<{ name: string; phone: string } | null>(null);
   const [draft, setDraft] = useState("");
   const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const bottomRef = useRef<HTMLDivElement>(null);
 
-  const filtered = chats.filter((c) =>
-    c.name.toLowerCase().includes(search.toLowerCase()) || c.wa.includes(search)
-  );
-  const active = chats.find((c) => c.id === activeId) ?? chats[0];
+  // ── Fetch convos ──────────────────────────────────────────────────────────
+  const fetchConvos = useCallback(async () => {
+    try {
+      const res = await fetch("/api/messages", { cache: "no-store" });
+      if (res.ok) {
+        const data = await res.json();
+        setConvos(data.data ?? []);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  const back = () => setActiveId(null);
+  useEffect(() => {
+    fetchConvos();
+    const interval = setInterval(fetchConvos, 10_000);
+    return () => clearInterval(interval);
+  }, [fetchConvos]);
+
+  // ── Fetch messages per phone ───────────────────────────────────────────────
+  const fetchMessages = useCallback(async (phone: string) => {
+    const res = await fetch(`/api/messages/${encodeURIComponent(phone)}`, { cache: "no-store" });
+    if (res.ok) {
+      const data = await res.json();
+      setMessages(data.data ?? []);
+      if (data.contact) setActiveContact({ name: data.contact.name, phone: data.contact.phone });
+      else setActiveContact(null);
+      await fetchConvos(); // refresh unread badges
+    }
+  }, [fetchConvos]);
+
+  useEffect(() => {
+    if (!activePhone) return;
+    // wrap in async IIFE agar lint gak complaint setState-in-effect
+    const load = async () => { await fetchMessages(activePhone); };
+    void load();
+    const interval = setInterval(() => { void fetchMessages(activePhone); }, 5_000);
+    return () => clearInterval(interval);
+  }, [activePhone, fetchMessages]);
+
+  // ── Scroll to bottom on new messages ─────────────────────────────────────
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  // ── Send message ──────────────────────────────────────────────────────────
+  async function handleSend() {
+    if (!draft.trim() || !activePhone || sending) return;
+    setSending(true);
+    try {
+      await fetch("/api/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: activePhone, text: draft.trim() }),
+      });
+      setDraft("");
+      await fetchMessages(activePhone);
+    } finally {
+      setSending(false);
+    }
+  }
+
+  // ── Filter ─────────────────────────────────────────────────────────────────
+  const filtered = convos.filter((c) => {
+    const q = search.toLowerCase();
+    return (
+      c.phone.includes(q) ||
+      (c.contact_name ?? "").toLowerCase().includes(q)
+    );
+  });
+
+  const activeConvo = convos.find((c) => c.phone === activePhone);
+  void activeConvo; // dipakai future (FU status badge di header)
 
   return (
     <div>
-      {/* ⚠️ Mobile: chat view full-screen (ganti list). Desktop: 2 kolom. */}
       <PageHeader
-        title={activeId ? active.name : "Inbox"}
-        subtitle={activeId ? active.wa : "Semua percakapan WhatsApp dalam satu tempat (statis)"}
+        title={activePhone ? (activeContact?.name ?? activePhone) : "Inbox"}
+        subtitle={activePhone ? activePhone : "Semua percakapan WhatsApp"}
         actions={
-          activeId ? (
-            <button onClick={back} className="flex h-8 w-8 items-center justify-center rounded-lg border border-edge text-slate-300 transition hover:bg-white/5 md:hidden">
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-              </svg>
+          activePhone ? (
+            <button
+              onClick={() => { setActivePhone(null); setMessages([]); }}
+              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold text-muted hover:text-slate-100"
+            >
+              ← Kembali
             </button>
-          ) : (
-            <Badge variant="success">● Terhubung ke WA</Badge>
-          )
+          ) : undefined
         }
       />
 
-      {/* ⚠️ Mobile-first: list & chat stack. Desktop: 3 kolom (list 1/3 + chat 2/3). */}
-      <div className="grid gap-4 md:grid-cols-3">
-        {/* Chat list — mobile: sembunyi saat chat dibuka */}
-        <div className={cn("md:col-span-1", activeId && "hidden md:block")}>
-          <Card className="flex flex-col overflow-hidden">
-            <div className="border-b border-edge/60 p-3">
-              <Input placeholder="Cari chat..." value={search} onChange={(e) => setSearch(e.target.value)} />
-            </div>
-            <div className="max-h-[calc(100vh-260px)] flex-1 overflow-y-auto md:max-h-none">
-              {filtered.map((c) => (
-                <button
-                  key={c.id}
-                  onClick={() => setActiveId(c.id)}
-                  className={cn(
-                    "flex w-full items-start gap-3 border-b border-edge/30 px-4 py-3 text-left transition-colors",
-                    c.id === activeId ? "bg-accent/5" : "hover:bg-white/[0.02]"
-                  )}
-                >
-                  <div className="relative">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface-2 text-sm font-bold text-slate-300">
-                      {c.name[0]}
-                    </div>
-                    {c.online && <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-base bg-success" />}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="truncate text-sm font-bold text-slate-100">{c.name}</p>
-                      <span className="shrink-0 text-[10px] text-faint">{c.time}</span>
-                    </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="truncate text-xs text-muted">{c.last}</p>
-                      {c.unread > 0 && (
-                        <span className="flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-accent px-1 text-[9px] font-bold text-[#0B0E14]">
-                          {c.unread}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </Card>
-        </div>
+      <WaOfflineBanner />
 
-        {/* Conversation — mobile: tampil penuh saat aktif */}
-        <div className={cn("md:col-span-2", !activeId && "hidden md:block")}>
-          <Card className="flex flex-col overflow-hidden">
-            {/* Header */}
-            <div className="flex items-center gap-3 border-b border-edge/60 px-4 py-3 md:px-5">
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-surface-2 text-sm font-bold">
-                {active.name[0]}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        {/* ── Chat list ────────────────────────────────────────────────────── */}
+        <Card className={cn("lg:col-span-1", activePhone && "hidden lg:block")}>
+          <div className="border-b border-edge/60 p-3">
+            <Input
+              placeholder="Cari nama atau nomor..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+          <div className="divide-y divide-edge/30 overflow-y-auto" style={{ maxHeight: "calc(100vh - 280px)" }}>
+            {loading && (
+              <p className="py-8 text-center text-sm text-muted">Memuat...</p>
+            )}
+            {!loading && filtered.length === 0 && (
+              <div className="px-4 py-8 text-center">
+                <p className="text-sm text-muted">Belum ada pesan</p>
+                <p className="mt-1 text-xs text-faint">Pesan masuk setelah bridge WA terhubung</p>
               </div>
-              <div className="flex-1">
-                <p className="text-sm font-bold text-slate-100">{active.name}</p>
-                <p className="text-[10px] text-faint">{active.wa}</p>
-              </div>
-              <Badge variant={active.status === "Balas" ? "success" : active.status === "Unsub" ? "danger" : "info"}>
-                {active.status}
-              </Badge>
-            </div>
-
-            {/* Messages */}
-            <div className="flex-1 space-y-3 overflow-y-auto bg-surface-2/30 p-4 md:h-[calc(100vh-280px)] md:p-5">
-              {messages.map((m) => (
-                <div key={m.id} className={cn("flex", m.from === "me" ? "justify-end" : "justify-start")}>
-                  <div
-                    className={cn(
-                      "max-w-[85%] rounded-2xl px-3.5 py-2 text-sm md:max-w-[75%] md:px-4 md:py-2.5",
-                      m.from === "me"
-                        ? "rounded-br-md bg-accent text-[#0B0E14]"
-                        : "rounded-bl-md bg-surface text-slate-200"
+            )}
+            {filtered.map((convo) => (
+              <button
+                key={convo.phone}
+                onClick={() => setActivePhone(convo.phone)}
+                className={cn(
+                  "flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-white/5",
+                  activePhone === convo.phone && "bg-accent/10"
+                )}
+              >
+                {/* Avatar */}
+                <div className={cn(
+                  "flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold",
+                  avatarColor(convo.phone)
+                )}>
+                  {initials(convo.contact_name, convo.phone)}
+                </div>
+                {/* Info */}
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="truncate text-sm font-semibold text-slate-100">
+                      {convo.contact_name ?? convo.phone}
+                    </p>
+                    <span className="shrink-0 text-[10px] text-faint">{fmtTime(convo.last_at)}</span>
+                  </div>
+                  <div className="mt-0.5 flex items-center justify-between gap-2">
+                    <p className="truncate text-xs text-muted">
+                      {convo.last_direction === "out" && <span className="text-faint">Kamu: </span>}
+                      {convo.last_text}
+                    </p>
+                    {convo.unread > 0 && (
+                      <span className="flex h-4 min-w-[16px] items-center justify-center rounded-full bg-accent px-1 text-[9px] font-extrabold text-[#0B0E14]">
+                        {convo.unread > 99 ? "99+" : convo.unread}
+                      </span>
                     )}
-                  >
-                    {m.text}
                   </div>
                 </div>
-              ))}
-            </div>
-
-            {/* Composer */}
-            <div className="flex items-center gap-2 border-t border-edge/60 p-3">
-              <Input
-                placeholder="Ketik pesan..."
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                className="flex-1"
-              />
-              <button
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent text-[#0B0E14] transition hover:bg-accent-hover disabled:opacity-40"
-                disabled={!draft.trim()}
-              >
-                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                </svg>
               </button>
+            ))}
+          </div>
+        </Card>
+
+        {/* ── Chat view ─────────────────────────────────────────────────────── */}
+        <Card className={cn("flex flex-col lg:col-span-2", !activePhone && "hidden lg:flex")}>
+          {!activePhone ? (
+            <div className="flex flex-1 flex-col items-center justify-center py-16 text-center">
+              <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-accent/10">
+                <svg className="h-7 w-7 text-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h8m-8 4h5m-9 6h16a2 2 0 002-2V6a2 2 0 00-2-2H4a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+              </div>
+              <p className="text-sm font-semibold text-slate-300">Pilih percakapan</p>
+              <p className="mt-1 text-xs text-faint">Klik kontak di sebelah kiri untuk membuka chat</p>
             </div>
-          </Card>
-        </div>
+          ) : (
+            <>
+              {/* Header */}
+              <div className="flex items-center gap-3 border-b border-edge/60 px-4 py-3">
+                <div className={cn(
+                  "flex h-9 w-9 items-center justify-center rounded-full text-sm font-bold",
+                  avatarColor(activePhone)
+                )}>
+                  {initials(activeContact?.name ?? null, activePhone)}
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-slate-100">{activeContact?.name ?? activePhone}</p>
+                  <p className="text-xs text-faint">{activePhone}</p>
+                </div>
+                {activeContact && (
+                  <a
+                    href={`/contacts`}
+                    className="ml-auto text-xs font-semibold text-accent hover:underline"
+                  >
+                    Lihat Kontak →
+                  </a>
+                )}
+              </div>
+
+              {/* Messages */}
+              <div className="flex-1 overflow-y-auto space-y-3 p-4" style={{ maxHeight: "calc(100vh - 360px)" }}>
+                {messages.length === 0 && (
+                  <p className="py-8 text-center text-sm text-muted">Belum ada pesan</p>
+                )}
+                {messages.map((msg) => (
+                  <div key={msg.id} className={cn("flex", msg.direction === "out" ? "justify-end" : "justify-start")}>
+                    <div className={cn(
+                      "max-w-[75%] rounded-2xl px-3.5 py-2 text-sm",
+                      msg.direction === "out"
+                        ? "rounded-br-sm bg-accent text-[#0B0E14]"
+                        : "rounded-bl-sm bg-surface-2 text-slate-200"
+                    )}>
+                      <p>{msg.text}</p>
+                      <p className={cn(
+                        "mt-0.5 text-right text-[10px]",
+                        msg.direction === "out" ? "text-[#0B0E14]/60" : "text-faint"
+                      )}>
+                        {fmtTime(msg.createdAt)}
+                        {msg.direction === "out" && (
+                          <span className="ml-1">{msg.status === "read" ? "✓✓" : msg.status === "delivered" ? "✓✓" : "✓"}</span>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+                <div ref={bottomRef} />
+              </div>
+
+              {/* Input */}
+              <div className="flex items-center gap-2 border-t border-edge/60 p-3">
+                <Input
+                  placeholder="Ketik pesan... (Bridge WA offline — tersimpan di DB)"
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+                  className="flex-1"
+                />
+                <button
+                  onClick={handleSend}
+                  disabled={!draft.trim() || sending}
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent text-[#0B0E14] transition hover:bg-accent-hover disabled:opacity-40"
+                >
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                  </svg>
+                </button>
+              </div>
+            </>
+          )}
+        </Card>
       </div>
     </div>
   );
