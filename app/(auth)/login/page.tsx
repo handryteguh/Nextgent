@@ -37,7 +37,7 @@ export default function LoginPage() {
 
       if (res.ok && data.ok) {
         // Login sukses → full reload supaya middleware baca cookie baru
-        window.location.href = "/";
+        setTimeout(() => { window.location.href = "/"; }, 50);
         return;
       }
 
