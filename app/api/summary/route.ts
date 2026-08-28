@@ -67,7 +67,23 @@ export async function GET() {
       followup: { active: fuActive, paused: fuPaused, completed: fuCompleted },
       deals: { active: dealsActive, pipelineValue: dealsPipelineValue, won: dealsWon },
       sequences: { total: seqTotal, active: seqActive },
-      wa: { connected: false }, // placeholder sampai bridge WA tersedia
+      wa: await getWaStatus(),
     },
   });
+}
+
+async function getWaStatus(): Promise<{ connected: boolean }> {
+  const token = process.env.FONNTE_TOKEN ?? "";
+  if (!token) return { connected: false };
+  try {
+    const res = await fetch("https://api.fonnte.com/device", {
+      method: "GET",
+      headers: { "Authorization": token },
+      signal: AbortSignal.timeout(4000),
+    });
+    const data = await res.json().catch(() => ({})) as { status?: boolean; device?: { status?: string } };
+    return { connected: !!(data.status && data.device?.status === "connect") };
+  } catch {
+    return { connected: false };
+  }
 }
