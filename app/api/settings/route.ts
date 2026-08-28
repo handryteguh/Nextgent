@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { settings } from "@/db/schema";
 import { isAuthed } from "@/lib/auth";
-import { eq } from "drizzle-orm";
+import {} from "drizzle-orm";
 
 // Keys yang valid di settings table
 const ALLOWED_KEYS = [

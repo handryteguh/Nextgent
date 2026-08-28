@@ -59,6 +59,30 @@ export const sequenceSteps = sqliteTable("sequence_steps", {
   enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
 });
 
+// ---------- FOLLOWUP JOBS ----------
+// Satu baris per kontak per sequence — tracking progress di-FU
+export const followupJobs = sqliteTable("followup_jobs", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  contactId: integer("contact_id")
+    .notNull()
+    .references(() => contacts.id, { onDelete: "cascade" }),
+  sequenceId: integer("sequence_id")
+    .notNull()
+    .references(() => sequences.id, { onDelete: "cascade" }),
+  currentStep: integer("current_step").notNull().default(0), // index step berikutnya (0 = belum mulai)
+  status: text("status", {
+    enum: ["active", "paused", "stopped", "completed", "failed"],
+  })
+    .notNull()
+    .default("active"),
+  nextSendAt: integer("next_send_at"), // ms epoch kapan step berikutnya dikirim
+  lastSentAt: integer("last_sent_at"), // ms epoch terakhir berhasil kirim
+  stoppedReason: text("stopped_reason"), // "replied" | "manual" | "unsubscribed" | "max_retry"
+  retryCount: integer("retry_count").notNull().default(0),
+  createdAt: integer("created_at").notNull().default(sql`(unixepoch() * 1000)`),
+  updatedAt: integer("updated_at").notNull().default(sql`(unixepoch() * 1000)`),
+});
+
 // ---------- DEALS ----------
 export const deals = sqliteTable("deals", {
   id: integer("id").primaryKey({ autoIncrement: true }),

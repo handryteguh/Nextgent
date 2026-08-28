@@ -1,141 +1,369 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input, Label, Select } from "@/components/ui/input";
+import { Input, Select } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { KpiCard } from "@/components/ui/kpi-card";
 
-// Data dummy sequence
-const sequence = [
-  { id: "fu1", name: "FU1", delay: "H+1 (24 jam)", template: "Halo {nama}, makasih udah hubungi kami. Ada yang bisa kami bantu soal {topik}?" },
-  { id: "fu2", name: "FU2", delay: "H+3 (72 jam)", template: "Halo {nama}, follow-up nih — gimana {topik}? Kami bisa bantu kalau masih butuh." },
-  { id: "fu3", name: "FU3", delay: "H+7 (168 jam)", template: "Halo {nama}, ini follow-up terakhir dari kami soal {topik}. Kabarin aja kalau masih minat ya." },
-];
+// ── Types ────────────────────────────────────────────────────────────────────
 
-// Data dummy progress — status sesuai PRD 5.4.6 (lengkap)
-const progress = [
-  { id: 1, name: "Yan Azmi", step: "Menunggu FU1", due: "20 Agu, 09:00", status: "active" as const, replied: false },
-  { id: 2, name: "Johar Tantowi", step: "FU1 terkirim", due: "18 Agu, 09:00", status: "info" as const, replied: false },
-  { id: 3, name: "Evi Yuslatin", step: "FU2 terkirim", due: "15 Agu, 10:12", status: "violet" as const, replied: false },
-  { id: 4, name: "Prasetyo Darmawan", step: "Balas — STOP", due: "—", status: "success" as const, replied: true },
-  { id: 5, name: "Maya Jaya", step: "Selesai", due: "—", status: "success" as const, replied: true },
-  { id: 6, name: "Fajar Servis", step: "FU1 terkirim", due: "10 Agu, 08:45", status: "info" as const, replied: false },
-  { id: 7, name: "Ranti Mebel", step: "Unsubscribe", due: "—", status: "danger" as const, replied: false },
-  { id: 8, name: "Ari Studio", step: "Paused (WA putus)", due: "—", status: "warning" as const, replied: false },
-  { id: 9, name: "Budi Santoso", step: "Gagal — retry habis", due: "—", status: "danger" as const, replied: false },
-];
+type FUJob = {
+  id: number;
+  status: "active" | "paused" | "stopped" | "completed" | "failed";
+  currentStep: number;
+  nextSendAt: number | null;
+  lastSentAt: number | null;
+  stoppedReason: string | null;
+  retryCount: number;
+  contactId: number;
+  sequenceId: number;
+  contactName: string | null;
+  contactPhone: string | null;
+  sequenceName: string | null;
+};
+
+type Summary = { total: number; active: number; paused: number; completed: number; stopped: number };
+
+type Sequence = {
+  id: number;
+  name: string;
+  enabled: boolean;
+  trigger: string;
+  stopOnReply: boolean;
+  steps: { id: number; name: string; delayHours: number; template: string; order: number }[];
+};
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function statusBadgeVariant(s: FUJob["status"]): "info" | "warning" | "success" | "danger" | "violet" {
+  const map: Record<FUJob["status"], "info" | "warning" | "success" | "danger" | "violet"> = {
+    active: "info",
+    paused: "warning",
+    stopped: "danger",
+    completed: "success",
+    failed: "danger",
+  };
+  return map[s];
+}
+
+function statusLabel(job: FUJob): string {
+  if (job.status === "completed") return "Selesai";
+  if (job.status === "stopped") {
+    const reasonMap: Record<string, string> = {
+      replied: "Balas — STOP",
+      manual: "Stop manual",
+      unsubscribed: "Unsubscribe",
+      max_retry: "Gagal — retry habis",
+    };
+    return reasonMap[job.stoppedReason ?? ""] ?? "Dihentikan";
+  }
+  if (job.status === "paused") return "Paused (WA putus)";
+  if (job.status === "failed") return "Gagal — retry habis";
+  if (job.status === "active") return `Menunggu step ${job.currentStep + 1}`;
+  return job.status;
+}
+
+function formatTs(ms: number | null): string {
+  if (!ms) return "—";
+  return new Date(ms).toLocaleString("id-ID", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+}
+
+// ── Main Component ─────────────────────────────────────────────────────────────
 
 export default function FollowupPage() {
-  const [editId, setEditId] = useState<string | null>(null);
-  const [form, setForm] = useState({ name: "FU2", delay: "72", template: "" });
+  const [jobs, setJobs] = useState<FUJob[]>([]);
+  const [summary, setSummary] = useState<Summary>({ total: 0, active: 0, paused: 0, completed: 0, stopped: 0 });
+  const [sequences, setSequences] = useState<Sequence[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const cols: Column<(typeof progress)[number]>[] = [
-    { key: "name", header: "Kontak", render: (r) => <span className="font-semibold text-slate-100">{r.name}</span> },
-    { key: "step", header: "Status", render: (r) => (
-      <Badge variant={r.status === "active" ? "warning" : r.status}>{r.step}</Badge>
-    ) },
-    { key: "due", header: "Jadwal Berikutnya", render: (r) => <span className={r.due === "—" ? "text-faint" : "text-slate-300"}>{r.due}</span> },
-    { key: "replied", header: "Balasan", render: (r) => (r.replied ? <Badge variant="success">✔ Dibalas</Badge> : <span className="text-faint">—</span>) },
+  // Edit sequence state
+  const [editId, setEditId] = useState<number | null>(null);
+  const [editForm, setEditForm] = useState({ name: "", delay: "24", template: "" });
+
+  // New job form
+  const [showNewJob, setShowNewJob] = useState(false);
+  const [newJob, setNewJob] = useState({ contactId: "", sequenceId: "" });
+  const [newJobError, setNewJobError] = useState<string | null>(null);
+
+  // Action loading state
+  const [actionLoading, setActionLoading] = useState<number | null>(null);
+
+  const fetchData = useCallback(async () => {
+    try {
+      const [jobsRes, seqRes] = await Promise.all([
+        fetch("/api/followup-jobs", { cache: "no-store" }),
+        fetch("/api/sequences", { cache: "no-store" }),
+      ]);
+      if (!jobsRes.ok || !seqRes.ok) throw new Error("Gagal ambil data");
+      const jobsData = await jobsRes.json();
+      const seqData = await seqRes.json();
+      setJobs(jobsData.data ?? []);
+      setSummary(jobsData.summary ?? { total: 0, active: 0, paused: 0, completed: 0, stopped: 0 });
+      setSequences(seqData.data ?? []);
+    } catch (e) {
+      const err = e as Error;
+      setError(err.message ?? "Gagal memuat data");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const tick = async () => {
+      if (!cancelled) await fetchData();
+    };
+    tick();
+    const interval = setInterval(tick, 30_000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [fetchData]);
+
+  async function handleAction(jobId: number, action: string, extra?: Record<string, unknown>) {
+    setActionLoading(jobId);
+    try {
+      const res = await fetch(`/api/followup-jobs/${jobId}/actions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, ...extra }),
+      });
+      if (!res.ok) {
+        const d = await res.json();
+        alert(d.error ?? "Gagal eksekusi action");
+        return;
+      }
+      await fetchData();
+    } catch {
+      alert("Gagal koneksi ke server");
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  async function handleCreateJob() {
+    setNewJobError(null);
+    const res = await fetch("/api/followup-jobs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ contactId: Number(newJob.contactId), sequenceId: Number(newJob.sequenceId) }),
+    });
+    const data = await res.json();
+    if (!res.ok) { setNewJobError(data.error ?? "Gagal membuat job"); return; }
+    setShowNewJob(false);
+    setNewJob({ contactId: "", sequenceId: "" });
+    await fetchData();
+  }
+
+  // ── Columns ────────────────────────────────────────────────────────────────
+  const cols: Column<FUJob>[] = [
     {
-      key: "actions",
-      header: "Aksi",
-      className: "text-right",
-      render: () => (
-        <div className="flex justify-end gap-1.5">
-          <Button variant="outline" size="sm" title="Lanjut ke step berikutnya">Lewati</Button>
-          <Button variant="outline" size="sm" title="Tunda jadwal">Tunda</Button>
-          <Button variant="danger" size="sm" title="Hentikan sequence">Stop</Button>
+      key: "contactName",
+      header: "Kontak",
+      render: (r) => (
+        <div>
+          <p className="font-semibold text-slate-100">{r.contactName ?? `#${r.contactId}`}</p>
+          <p className="text-xs text-muted">{r.contactPhone ?? "—"}</p>
         </div>
       ),
     },
+    {
+      key: "status",
+      header: "Status",
+      render: (r) => <Badge variant={statusBadgeVariant(r.status)}>{statusLabel(r)}</Badge>,
+    },
+    {
+      key: "sequenceName",
+      header: "Sequence",
+      render: (r) => <span className="text-slate-300 text-sm">{r.sequenceName ?? `#${r.sequenceId}`}</span>,
+    },
+    {
+      key: "nextSendAt",
+      header: "Jadwal Kirim",
+      render: (r) => <span className="text-sm text-slate-300">{formatTs(r.nextSendAt)}</span>,
+    },
+    {
+      key: "id",
+      header: "Aksi",
+      render: (r) => {
+        const busy = actionLoading === r.id;
+        return (
+          <div className="flex items-center gap-1.5">
+            {r.status === "active" && (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => handleAction(r.id, "skip")}
+                >
+                  Lewati
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => handleAction(r.id, "snooze", { snoozeHours: 24 })}
+                >
+                  Tunda
+                </Button>
+                <Button
+                  variant="danger"
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => handleAction(r.id, "stop")}
+                >
+                  Stop
+                </Button>
+              </>
+            )}
+            {r.status === "paused" && (
+              <Button
+                variant="success"
+                size="sm"
+                disabled={busy}
+                onClick={() => handleAction(r.id, "resume")}
+              >
+                Lanjutkan
+              </Button>
+            )}
+            {(r.status === "completed" || r.status === "stopped") && (
+              <span className="text-xs text-muted italic">—</span>
+            )}
+          </div>
+        );
+      },
+    },
   ];
 
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div>
       <PageHeader
         title="Follow-up"
-        subtitle="⭐ Mesin follow-up otomatis FU1 → FU2 → FU3 — stop on reply"
-        actions={<Button size="sm">+ Tambah Sequence</Button>}
+        subtitle="Sales cadence engine — FU1 → FU2 → FU3 otomatis"
+        actions={
+          <Button size="sm" onClick={() => setShowNewJob(!showNewJob)}>
+            + Mulai FU
+          </Button>
+        }
       />
 
-      {/* Stats — mobile: 2 kolom */}
-      <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-2 md:gap-4 xl:grid-cols-4">
-        <KpiCard label="Dalam Sequence" value={314} sub="Sedang berjalan" color="accent" icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>} />
-        <KpiCard label="Response Rate" value="68%" sub="Rata-rata semua step" color="success" icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>} />
-        <KpiCard label="Anti-Banned" value="On" sub="Jam 08-20 · delay ±20%" color="info" icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>} />
-        <KpiCard label="Hari Ini Terkirim" value="23" sub="FU1: 9 · FU2: 8 · FU3: 6" color="violet" icon={<svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>} />
+      {/* KPI Row */}
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <KpiCard label="Total Aktif" value={String(summary.active)} icon="🔄" color="info" />
+        <KpiCard label="Paused" value={String(summary.paused)} icon="⏸" color="orange" />
+        <KpiCard label="Selesai" value={String(summary.completed)} icon="✅" color="success" />
+        <KpiCard label="Dihentikan" value={String(summary.stopped)} icon="🛑" color="danger" />
       </div>
 
-      {/* Sequence editor & list — mobile: stack, desktop: 1/3 + 2/3 */}
-      <div className="mb-6 grid grid-cols-1 gap-4 xl:grid-cols-3">
-        <Card>
-          <CardHeader title={editId ? "Edit Step" : "+ Tambah Step"} subtitle="Atur jeda & template pesan" />
-          <CardBody className="space-y-4">
-            <div>
-              <Label>Nama Step</Label>
-              <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
+      {/* New Job Form */}
+      {showNewJob && (
+        <Card className="mb-6">
+          <CardHeader title="Mulai Follow-up Baru" subtitle="Pilih kontak dan sequence" />
+          <CardBody>
+            <div className="grid gap-4 sm:grid-cols-2">
               <div>
-                <Label>Delay (jam)</Label>
-                <Input type="number" value={form.delay} onChange={(e) => setForm({ ...form, delay: e.target.value })} />
+                <label htmlFor="nj-contact" className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-muted">Contact ID</label>
+                <Input
+                  id="nj-contact"
+                  placeholder="Masukkan ID kontak"
+                  value={newJob.contactId}
+                  onChange={(e) => setNewJob((p) => ({ ...p, contactId: e.target.value }))}
+                />
               </div>
               <div>
-                <Label>Trigger</Label>
-                <Select defaultValue="new_contact">
-                  <option value="new_contact">Kontak Baru</option>
-                  <option value="deal_stage">Deal Stage</option>
-                  <option value="manual">Manual</option>
+                <label htmlFor="nj-seq" className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-muted">Sequence</label>
+                <Select
+                  id="nj-seq"
+                  value={newJob.sequenceId}
+                  onChange={(e) => setNewJob((p) => ({ ...p, sequenceId: e.target.value }))}
+                >
+                  <option value="">Pilih sequence</option>
+                  {sequences.map((s) => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
                 </Select>
               </div>
             </div>
-            <div>
-              <Label>Template Pesan</Label>
-              <textarea
-                className="min-h-24 w-full rounded-lg border border-edge bg-surface-2 px-3 py-2 text-sm text-slate-100 placeholder:text-faint focus:border-accent/60 focus:outline-none focus:ring-2 focus:ring-accent/40"
-                placeholder="Halo {nama}, ..."
-                value={form.template}
-                onChange={(e) => setForm({ ...form, template: e.target.value })}
-              />
-              <p className="mt-1 text-[10px] text-faint">
-                Variabel: {"{nama}"} {"{topik}"} — delay random ±20% otomatis
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <Button className="flex-1">Simpan Step</Button>
-              {editId && <Button variant="outline" onClick={() => setEditId(null)}>Batal</Button>}
+            {newJobError && <p className="mt-2 text-sm text-danger">{newJobError}</p>}
+            <div className="mt-4 flex gap-2">
+              <Button size="sm" onClick={handleCreateJob}>Mulai</Button>
+              <Button variant="outline" size="sm" onClick={() => setShowNewJob(false)}>Batal</Button>
             </div>
           </CardBody>
         </Card>
+      )}
 
-        {/* Sequence list */}
-        <Card className="xl:col-span-2">
-          <CardHeader title="Sequence Default — Sales Cadence" subtitle="Urutan follow-up otomatis (3 step)" />
-          <CardBody className="space-y-3">
-            {sequence.map((s, i) => (
-              <div key={s.id} className="flex items-start gap-4 rounded-lg border border-edge/60 bg-surface-2/50 p-4">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent/10 font-extrabold text-accent">
-                  {i + 1}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-bold text-slate-100">{s.name}</span>
-                    <Badge variant="info">{s.delay}</Badge>
+      {/* Sequence Config */}
+      <div className="mb-6 grid gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader title="Sequence Steps" subtitle="Template pesan tiap step FU" />
+          <CardBody>
+            {sequences.length === 0 ? (
+              <p className="text-sm text-muted">Belum ada sequence. Buat lewat API dulu.</p>
+            ) : (
+              sequences.flatMap((seq) =>
+                seq.steps.map((step) => (
+                  <div key={step.id} className="mb-3 rounded-lg border border-edge/60 p-3">
+                    {editId === step.id ? (
+                      <div className="space-y-2">
+                        <Input
+                          placeholder="Nama step"
+                          value={editForm.name}
+                          onChange={(e) => setEditForm((p) => ({ ...p, name: e.target.value }))}
+                        />
+                        <Input
+                          type="number"
+                          placeholder="Delay (jam)"
+                          value={editForm.delay}
+                          onChange={(e) => setEditForm((p) => ({ ...p, delay: e.target.value }))}
+                        />
+                        <textarea
+                          className="w-full rounded border border-edge/60 bg-surface px-3 py-2 text-sm text-slate-200 focus:outline-none focus:ring-1 focus:ring-accent"
+                          rows={2}
+                          placeholder="Template pesan..."
+                          value={editForm.template}
+                          onChange={(e) => setEditForm((p) => ({ ...p, template: e.target.value }))}
+                        />
+                        <div className="flex gap-2">
+                          <Button size="sm" onClick={() => setEditId(null)}>Simpan</Button>
+                          <Button variant="outline" size="sm" onClick={() => setEditId(null)}>Batal</Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-semibold text-slate-100">
+                            {step.name}
+                            <span className="ml-2 text-xs font-normal text-muted">H+{step.delayHours / 24} ({step.delayHours} jam)</span>
+                          </p>
+                          <p className="mt-0.5 truncate text-xs text-muted">{step.template}</p>
+                        </div>
+                        <div className="flex shrink-0 gap-1.5">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setEditId(step.id);
+                              setEditForm({ name: step.name, delay: String(step.delayHours), template: step.template });
+                            }}
+                          >
+                            Edit
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  <p className="mt-1.5 truncate text-xs text-muted">{s.template}</p>
-                </div>
-                <div className="flex shrink-0 gap-2">
-                  <Button variant="outline" size="sm" onClick={() => { setEditId(s.id); setForm({ name: s.name, delay: String(parseInt(s.delay)), template: s.template }); }}>
-                    Edit
-                  </Button>
-                  <Button variant="danger" size="sm">Hapus</Button>
-                </div>
-              </div>
-            ))}
+                ))
+              )
+            )}
             <div className="flex items-center justify-between rounded-lg border border-success/25 bg-success/5 p-3 text-xs">
               <span className="flex items-center gap-2 font-semibold text-success">
                 <span className="h-2 w-2 rounded-full bg-success" /> Safety Engine Aktif
@@ -148,8 +376,14 @@ export default function FollowupPage() {
 
       {/* Progress table */}
       <Card>
-        <CardHeader title="Progress Follow-up" subtitle="Status tiap kontak dalam sequence" />
-        <DataTable columns={cols} rows={progress} emptyText="Belum ada kontak dalam sequence" />
+        <CardHeader title="Progress Follow-up" subtitle={`${summary.total} kontak dalam sequence`} />
+        {loading ? (
+          <div className="px-5 py-8 text-center text-sm text-muted">Memuat data...</div>
+        ) : error ? (
+          <div className="px-5 py-8 text-center text-sm text-danger">{error}</div>
+        ) : (
+          <DataTable columns={cols} rows={jobs} emptyText="Belum ada kontak dalam sequence" />
+        )}
       </Card>
     </div>
   );
