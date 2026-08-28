@@ -6,12 +6,14 @@ import {} from "drizzle-orm";
 
 // Keys yang valid di settings table
 const ALLOWED_KEYS = [
-  "fu_delay_1",   // jam FU1 (default 24)
-  "fu_delay_2",   // jam FU2 (default 72)
-  "fu_delay_3",   // jam FU3 (default 168)
-  "send_start",   // jam mulai kirim (default "08:00")
-  "send_stop",    // jam berhenti kirim (default "20:00")
-  "app_version",  // read-only
+  "fu_delay_1",      // jam FU1 (default 24)
+  "fu_delay_2",      // jam FU2 (default 72)
+  "fu_delay_3",      // jam FU3 (default 168)
+  "send_start",      // jam mulai kirim (default "08:00")
+  "send_stop",       // jam berhenti kirim (default "20:00")
+  "app_version",     // read-only
+  "tailscale_ip",    // TailScale IP laptop
+  "tailscale_port",  // port dev server (default 3001)
 ] as const;
 
 type SettingKey = typeof ALLOWED_KEYS[number];
