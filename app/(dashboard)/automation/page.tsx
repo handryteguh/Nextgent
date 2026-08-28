@@ -1,171 +1,362 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { PageHeader } from "@/components/layout/page-header";
-import { Card } from "@/components/ui/card";
+import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input, Label } from "@/components/ui/input";
+import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { DataTable, type Column } from "@/components/ui/data-table";
-import { timeAgo } from "@/lib/utils";
+import { cn, timeAgo } from "@/lib/utils";
 
-// ⚠️ Prototipe statis Phase 0 — AI CS (mina-cs) belum nyambung.
-// Phase 2: koneksi MCP ke mina-cs di VPS + log dari DB ai_conversations.
+// ── Types ──────────────────────────────────────────────────────────────────────
+type Rule = {
+  id: number;
+  keyword: string;
+  reply: string;
+  enabled: boolean;
+  hits: number;
+  createdAt: number;
+};
 
-// Log percakapan AI (dari DB ai_conversations — dummy)
-const aiLogs = [
-  { id: 1, contact: "Yan Azmi", request: "Untuk harga paketnya berapa ya?", response: "Halo kak! Untuk paket kami: Basic 150rb, Pro 350rb, Pro Max 750rb/bulan. Mau dibantu pilih yang sesuai?", matched: "Rules & SOP", time: 1786651545 },
-  { id: 2, contact: "Evi Yuslatin", request: "Bisa kirim brosur dong", response: "Tentu kak, brosur digital kami kirim via email atau WA ya — boleh minta alamat emailnya?", matched: "Rules & SOP", time: 1786639240 },
-  { id: 3, contact: "Fajar Servis", request: "Jam buka di mana?", response: "Kami buka Senin–Jumat 08.00–17.00 WIB. Alamat: Jl. Contoh No. 123, Jakarta.", matched: "Fast-path rule (alamat)", time: 1786558332 },
-];
+type AiLog = {
+  id: number;
+  contactName: string | null;
+  phone: string | null;
+  request: string;
+  response: string;
+  matched: string;
+  createdAt: number;
+};
 
+type Tab = "ai" | "rules" | "sequences";
+
+// ── Main ───────────────────────────────────────────────────────────────────────
 export default function AutomationPage() {
-  const [rulesList, setRulesList] = useState([
-    { id: 1, keyword: "harga", reply: "Untuk info harga paket, bisa dibantu kak: Basic 150rb, Pro 350rb, Pro Max 750rb/bulan.", enabled: true, hits: 42 },
-    { id: 2, keyword: "alamat", reply: "Alamat kami: Jl. Contoh No. 123, Jakarta. Buka Senin-Jumat 08.00-17.00.", enabled: true, hits: 18 },
-    { id: 3, keyword: "cara bayar", reply: "Pembayaran via transfer bank / QRIS. Detailnya dikirim ke WA ya kak.", enabled: true, hits: 27 },
-    { id: 4, keyword: "refund", reply: "Untuk refund, hubungi admin langsung ya — kami proses maksimal 1x24 jam.", enabled: false, hits: 5 },
-  ]);
+  const [tab, setTab] = useState<Tab>("ai");
+  const [rules, setRules] = useState<Rule[]>([]);
+  const [aiLogs, setAiLogs] = useState<AiLog[]>([]);
   const [form, setForm] = useState({ keyword: "", reply: "" });
-  const [tab, setTab] = useState<"ai" | "rules">("ai");
+  const [saving, setSaving] = useState(false);
+  const [loadingRules, setLoadingRules] = useState(true);
+  const [loadingLogs, setLoadingLogs] = useState(true);
 
-  const aiStatus = { enabled: true, profile: "mina-cs (Hermes di VPS)", cooldown: 30, businessHours: "08:00–20:00 WIB" };
+  // ── Fetch rules ─────────────────────────────────────────────────────────────
+  const fetchRules = useCallback(async () => {
+    const res = await fetch("/api/automation/rules", { cache: "no-store" });
+    if (res.ok) {
+      const data = await res.json();
+      setRules(data.data ?? []);
+    }
+    setLoadingRules(false);
+  }, []);
 
-  const cols: Column<(typeof rulesList)[number]>[] = [
-    { key: "keyword", header: "Keyword", render: (r) => <Badge variant="info">{`"${r.keyword}"`}</Badge> },
-    { key: "reply", header: "Balasan Cepat", render: (r) => <span className="line-clamp-2 max-w-md text-xs text-muted">{r.reply}</span> },
-    { key: "hits", header: "Dipicu", render: (r) => <span className="font-bold text-slate-100">{r.hits}x</span> },
-    { key: "enabled", header: "Status", render: (r) => (r.enabled ? <Badge variant="success">Aktif</Badge> : <Badge variant="default">Nonaktif</Badge>) },
+  // ── Fetch AI logs ────────────────────────────────────────────────────────────
+  const fetchLogs = useCallback(async () => {
+    const res = await fetch("/api/automation/ai-logs", { cache: "no-store" });
+    if (res.ok) {
+      const data = await res.json();
+      setAiLogs(data.data ?? []);
+    }
+    setLoadingLogs(false);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const tick = async () => {
+      if (cancelled) return;
+      await Promise.all([fetchRules(), fetchLogs()]);
+    };
+    void tick();
+    const interval = setInterval(() => { void tick(); }, 30_000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [fetchRules, fetchLogs]);
+
+  // ── Add rule ────────────────────────────────────────────────────────────────
+  async function handleAddRule() {
+    if (!form.keyword.trim() || !form.reply.trim() || saving) return;
+    setSaving(true);
+    try {
+      await fetch("/api/automation/rules", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ keyword: form.keyword.trim(), reply: form.reply.trim() }),
+      });
+      setForm({ keyword: "", reply: "" });
+      await fetchRules();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // ── Toggle rule ─────────────────────────────────────────────────────────────
+  async function handleToggle(id: number, enabled: boolean) {
+    await fetch(`/api/automation/rules/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled: !enabled }),
+    });
+    await fetchRules();
+  }
+
+  // ── Delete rule ─────────────────────────────────────────────────────────────
+  async function handleDelete(id: number) {
+    await fetch(`/api/automation/rules/${id}`, { method: "DELETE" });
+    await fetchRules();
+  }
+
+  // ── Rule columns ────────────────────────────────────────────────────────────
+  const ruleCols: Column<Rule>[] = [
     {
-      key: "actions", header: "Aksi", className: "text-right",
+      key: "keyword",
+      header: "Keyword",
+      render: (r) => <Badge variant="info">{`"${r.keyword}"`}</Badge>,
+    },
+    {
+      key: "reply",
+      header: "Balasan Cepat",
+      render: (r) => <span className="line-clamp-2 max-w-md text-xs text-muted">{r.reply}</span>,
+    },
+    {
+      key: "hits",
+      header: "Dipicu",
+      render: (r) => <span className="text-xs font-bold text-slate-300">{r.hits}×</span>,
+    },
+    {
+      key: "enabled",
+      header: "Status",
       render: (r) => (
-        <div className="flex justify-end gap-2">
-          <Button variant="outline" size="sm" onClick={() => setRulesList((l) => l.map((x) => (x.id === r.id ? { ...x, enabled: !x.enabled } : x)))}>
-            {r.enabled ? "Nonaktifkan" : "Aktifkan"}
-          </Button>
-          <Button variant="danger" size="sm">Hapus</Button>
-        </div>
+        <button onClick={() => { void handleToggle(r.id, r.enabled); }}>
+          <Badge variant={r.enabled ? "success" : "default"}>
+            {r.enabled ? "Aktif" : "Nonaktif"}
+          </Badge>
+        </button>
+      ),
+    },
+    {
+      key: "id",
+      header: "",
+      render: (r) => (
+        <button
+          onClick={() => { void handleDelete(r.id); }}
+          className="text-xs font-semibold text-danger hover:underline"
+        >
+          Hapus
+        </button>
       ),
     },
   ];
 
-  const logCols: Column<(typeof aiLogs)[number]>[] = [
-    { key: "contact", header: "Kontak", render: (l) => <span className="font-semibold text-slate-100">{l.contact}</span> },
-    { key: "request", header: "Pesan Masuk", render: (l) => <span className="line-clamp-1 max-w-[220px] text-xs text-muted">{`"${l.request}"`}</span> },
-    { key: "response", header: "Jawaban AI (mina-cs)", render: (l) => <span className="line-clamp-2 max-w-md text-xs text-slate-300">{l.response}</span> },
-    { key: "matched", header: "Sumber Jawaban", render: (l) => <Badge variant={l.matched.startsWith("Fast-path") ? "violet" : "info"}>{l.matched}</Badge> },
-    { key: "time", header: "Waktu", render: (l) => <span className="whitespace-nowrap text-xs text-faint">{timeAgo(l.time)}</span> },
+  // ── AI log columns ──────────────────────────────────────────────────────────
+  const logCols: Column<AiLog>[] = [
+    {
+      key: "contactName",
+      header: "Kontak",
+      render: (r) => (
+        <div>
+          <p className="text-xs font-semibold text-slate-200">{r.contactName ?? "—"}</p>
+          {r.phone && <p className="text-[10px] text-faint">{r.phone}</p>}
+        </div>
+      ),
+    },
+    {
+      key: "request",
+      header: "Pesan Masuk",
+      render: (r) => <span className="line-clamp-2 max-w-xs text-xs text-muted">{r.request}</span>,
+    },
+    {
+      key: "response",
+      header: "Balasan AI",
+      render: (r) => <span className="line-clamp-2 max-w-xs text-xs text-muted">{r.response}</span>,
+    },
+    {
+      key: "matched",
+      header: "Matched",
+      render: (r) => <Badge variant="info">{r.matched}</Badge>,
+    },
+    {
+      key: "createdAt",
+      header: "Waktu",
+      render: (r) => <span className="text-[10px] text-faint">{timeAgo(r.createdAt)}</span>,
+    },
   ];
+
+  // ── AI status card (Hermes VPS) ─────────────────────────────────────────────
+  const aiStatus = {
+    profile: "Hermes Agent (VPS)",
+    bridge: process.env.NEXT_PUBLIC_HERMES_VPS_URL ? "Terhubung" : "Belum diset",
+    businessHours: "08:00–20:00 WIB",
+    cooldown: 30,
+  };
 
   return (
     <div>
       <PageHeader
         title="Automation"
-        subtitle="AI CS (mina-cs) — balas chat sesuai Rules & SOP saat lo sibuk"
-        actions={<Badge variant={aiStatus.enabled ? "success" : "default"}>{aiStatus.enabled ? "● AI CS Aktif" : "○ Nonaktif"}</Badge>}
+        subtitle="AI CS + keyword rules + sequence triggers"
+        actions={
+          <div className="flex gap-1 rounded-full border border-edge p-1">
+            {(["ai", "rules", "sequences"] as Tab[]).map((t) => (
+              <button
+                key={t}
+                onClick={() => setTab(t)}
+                className={cn(
+                  "rounded-full px-3 py-1 text-[11px] font-bold capitalize transition-colors",
+                  tab === t ? "bg-accent text-[#0B0E14]" : "text-muted hover:text-slate-200"
+                )}
+              >
+                {t === "ai" ? "AI CS" : t === "rules" ? "Keyword Rules" : "Sequences"}
+              </button>
+            ))}
+          </div>
+        }
       />
 
-      {/* Status AI CS — mobile: 2 kolom, desktop: 4 */}
-      <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
-        <Card>
-          <div className="p-5">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-muted">Otak AI CS</p>
-            <p className="mt-1 text-sm font-bold text-slate-100">mina-cs</p>
-            <p className="mt-1 text-[11px] text-faint">Profile Hermes di VPS — jawab sesuai SOP, bukan keyword statis</p>
-          </div>
-        </Card>
-        <Card>
-          <div className="p-5">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-muted">Cooldown Anti-Spam</p>
-            <p className="mt-1 text-sm font-bold text-slate-100">{aiStatus.cooldown} menit / kontak</p>
-            <p className="mt-1 text-[11px] text-faint">Setelah di-auto-reply, pesan berikutnya diam — biar manusia yang handle</p>
-          </div>
-        </Card>
-        <Card>
-          <div className="p-5">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-muted">Jam Aktif</p>
-            <p className="mt-1 text-sm font-bold text-slate-100">{aiStatus.businessHours}</p>
-            <p className="mt-1 text-[11px] text-faint">Di luar jam → fallback ke manusia</p>
-          </div>
-        </Card>
-        <Card>
-          <div className="p-5">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-muted">Akses Data CRM</p>
-            <p className="mt-1 text-sm font-bold text-slate-100">Read-only 👁</p>
-            <p className="mt-1 text-[11px] text-faint">Bisa baca kontak & deal buat personalisasi — gak bisa edit. Semua akses di-log</p>
-          </div>
-        </Card>
-      </div>
+      {/* ── Tab: AI CS ─────────────────────────────────────────────────────── */}
+      {tab === "ai" && (
+        <div className="space-y-4">
+          {/* Status card */}
+          <Card>
+            <CardHeader title="Status AI CS" subtitle="Hermes Agent di VPS — auto-balas pesan masuk" />
+            <CardBody>
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                {[
+                  { label: "Engine", value: aiStatus.profile, color: "text-accent" },
+                  { label: "Bridge WA", value: aiStatus.bridge, color: "text-info" },
+                  { label: "Jam Operasi", value: aiStatus.businessHours, color: "text-slate-200" },
+                  { label: "Cooldown", value: `${aiStatus.cooldown}s`, color: "text-slate-200" },
+                ].map((item) => (
+                  <div key={item.label} className="rounded-lg border border-edge/60 bg-surface-2/50 p-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-faint">{item.label}</p>
+                    <p className={cn("mt-1 text-sm font-bold", item.color)}>{item.value}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-4 rounded-lg border border-info/30 bg-info/10 p-4">
+                <p className="text-sm font-semibold text-info">💡 Cara kerja AI CS</p>
+                <ol className="mt-2 space-y-1 text-xs text-muted">
+                  <li>1. Pesan masuk via bridge WA → <code className="text-accent">/api/webhook/wa</code></li>
+                  <li>2. Cek keyword rules dulu (fast-path) — kalau match, langsung balas</li>
+                  <li>3. Kalau gak ada rule yang cocok → forward ke Hermes Agent di VPS</li>
+                  <li>4. Hermes generate balasan berdasarkan SOP + konteks kontak</li>
+                  <li>5. Balasan dikirim via <code className="text-accent">/api/wa/send</code> → log masuk ke tabel ini</li>
+                </ol>
+              </div>
+            </CardBody>
+          </Card>
 
-      {/* Tab: Log AI CS (utama) vs Keyword Rules (opsional fast-path) */}
-      <div className="mb-4 flex gap-2">
-        <button
-          onClick={() => setTab("ai")}
-          className={`rounded-full px-4 py-1.5 text-xs font-bold transition-colors ${tab === "ai" ? "bg-accent text-[#0B0E14]" : "border border-edge text-muted hover:text-slate-200"}`}
-        >
-          Percakapan AI CS
-        </button>
-        <button
-          onClick={() => setTab("rules")}
-          className={`rounded-full px-4 py-1.5 text-xs font-bold transition-colors ${tab === "rules" ? "bg-accent text-[#0B0E14]" : "border border-edge text-muted hover:text-slate-200"}`}
-        >
-          Keyword Rules (Opsional)
-        </button>
-      </div>
+          {/* AI logs */}
+          <Card>
+            <CardHeader
+              title="Log Percakapan AI"
+              subtitle={`${aiLogs.length} percakapan terakhir`}
+            />
+            {loadingLogs ? (
+              <p className="px-5 py-8 text-center text-sm text-muted">Memuat...</p>
+            ) : aiLogs.length === 0 ? (
+              <div className="px-5 py-10 text-center">
+                <p className="text-sm text-muted">Belum ada log AI CS</p>
+                <p className="mt-1 text-xs text-faint">Log akan muncul setelah bridge WA terhubung dan AI mulai membalas</p>
+              </div>
+            ) : (
+              <DataTable columns={logCols} rows={aiLogs} emptyText="Belum ada log" />
+            )}
+          </Card>
+        </div>
+      )}
 
-      {tab === "ai" ? (
-        <Card>
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-edge/60 px-5 py-4">
-            <div>
-              <h3 className="text-sm font-bold text-slate-100">Log Percakapan AI</h3>
-              <p className="mt-0.5 text-xs text-muted">Semua percakapan di-log buat review & perbaikan SOP</p>
-            </div>
-            <Badge variant="info">{aiLogs.length} percakapan hari ini</Badge>
-          </div>
-          <DataTable columns={logCols} rows={aiLogs} emptyText="Belum ada percakapan AI" />
-        </Card>
-      ) : (
+      {/* ── Tab: Keyword Rules ──────────────────────────────────────────────── */}
+      {tab === "rules" && (
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
           {/* Form tambah rule */}
-          <Card className="h-fit">
-            <div className="border-b border-edge/60 px-5 py-4">
-              <h3 className="text-sm font-bold text-slate-100">+ Tambah Keyword Rule</h3>
-              <p className="mt-0.5 text-xs text-muted">Fast-path opsional — pesan yang match keyword dibalas instan tanpa AI</p>
-            </div>
-            <div className="space-y-4 p-5">
+          <Card className="xl:col-span-1">
+            <CardHeader title="Tambah Rule" subtitle="Keyword → balasan otomatis (fast-path sebelum AI)" />
+            <CardBody className="space-y-3">
               <div>
-                <Label>Keyword</Label>
-                <Input placeholder="cth: harga" value={form.keyword} onChange={(e) => setForm({ ...form, keyword: e.target.value })} />
+                <label className="mb-1 block text-xs font-semibold text-muted">Keyword</label>
+                <Input
+                  placeholder="contoh: harga, alamat, cara bayar"
+                  value={form.keyword}
+                  onChange={(e) => setForm((f) => ({ ...f, keyword: e.target.value }))}
+                />
               </div>
               <div>
-                <Label>Balasan Otomatis</Label>
+                <label className="mb-1 block text-xs font-semibold text-muted">Balasan otomatis</label>
                 <textarea
-                  className="min-h-24 w-full rounded-lg border border-edge bg-surface-2 px-3 py-2 text-sm text-slate-100 placeholder:text-faint focus:border-accent/60 focus:outline-none focus:ring-2 focus:ring-accent/40"
-                  placeholder="Tulis balasan... (opsional — AI tetap jadi intelijen utama)"
+                  placeholder="Tulis balasan yang akan dikirim otomatis..."
                   value={form.reply}
-                  onChange={(e) => setForm({ ...form, reply: e.target.value })}
+                  onChange={(e) => setForm((f) => ({ ...f, reply: e.target.value }))}
+                  rows={4}
+                  className="w-full resize-none rounded-lg border border-edge bg-surface-2 px-3 py-2 text-sm text-slate-200 placeholder:text-faint focus:border-accent focus:outline-none"
                 />
               </div>
               <Button
+                disabled={!form.keyword.trim() || !form.reply.trim() || saving}
+                onClick={() => { void handleAddRule(); }}
                 className="w-full"
-                onClick={() => {
-                  if (!form.keyword.trim() || !form.reply.trim()) return;
-                  setRulesList((l) => [...l, { id: Date.now(), keyword: form.keyword.trim(), reply: form.reply.trim(), enabled: true, hits: 0 }]);
-                  setForm({ keyword: "", reply: "" });
-                }}
               >
-                Simpan Rule
+                {saving ? "Menyimpan..." : "Simpan Rule"}
               </Button>
-            </div>
+              <p className="text-[10px] text-faint">
+                Tip: keyword gak case-sensitive. Gunakan kata kunci pendek (1–3 kata) biar akurasi deteksi tinggi.
+              </p>
+            </CardBody>
           </Card>
 
           {/* Daftar rules */}
           <Card className="xl:col-span-2">
-            <div className="border-b border-edge/60 px-5 py-4">
-              <h3 className="text-sm font-bold text-slate-100">Keyword Rules</h3>
-              <p className="mt-0.5 text-xs text-muted">{rulesList.length} aturan terdaftar — fast-path opsional, AI tetap utama</p>
-            </div>
-            <DataTable columns={cols} rows={rulesList} emptyText="Belum ada rule" />
+            <CardHeader
+              title="Keyword Rules"
+              subtitle={loadingRules ? "Memuat..." : `${rules.length} aturan — klik status untuk toggle, klik Hapus untuk hapus`}
+            />
+            {loadingRules ? (
+              <p className="px-5 py-8 text-center text-sm text-muted">Memuat...</p>
+            ) : (
+              <DataTable columns={ruleCols} rows={rules} emptyText="Belum ada rule — tambah di kiri" />
+            )}
+          </Card>
+        </div>
+      )}
+
+      {/* ── Tab: Sequences ─────────────────────────────────────────────────── */}
+      {tab === "sequences" && (
+        <div className="space-y-4">
+          <div className="rounded-xl border border-accent/20 bg-accent/5 p-5">
+            <p className="text-sm font-bold text-accent">📋 Sequences dikelola di halaman Follow-up</p>
+            <p className="mt-1 text-xs text-muted">
+              Buat dan kelola sequence FU1 → FU2 → FU3 langsung dari menu Follow-up di sidebar.
+              Di sini kamu bisa lihat trigger dan status semua sequence yang aktif.
+            </p>
+            <a
+              href="/followup"
+              className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-xs font-bold text-[#0B0E14] hover:bg-accent-hover"
+            >
+              Buka Follow-up →
+            </a>
+          </div>
+
+          {/* Placeholder sequence trigger config */}
+          <Card>
+            <CardHeader
+              title="Trigger Config"
+              subtitle="Kapan sequence otomatis dimulai untuk kontak baru"
+            />
+            <CardBody className="space-y-3">
+              {[
+                { trigger: "Kontak baru masuk via chat", action: "Mulai Sequence Default", status: "soon" },
+                { trigger: "Kontak balas pesan", action: "Stop FU aktif, tandai sebagai Respond", status: "soon" },
+                { trigger: "Kata kunci 'stop' / 'berhenti'", action: "Unsubscribe permanen", status: "soon" },
+                { trigger: "Deal stage → Won", action: "Stop semua FU kontak", status: "soon" },
+              ].map((item) => (
+                <div key={item.trigger} className="flex items-center justify-between rounded-lg border border-edge/60 bg-surface-2/50 px-4 py-3">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-200">Trigger: <span className="text-info">{item.trigger}</span></p>
+                    <p className="text-xs text-muted">→ {item.action}</p>
+                  </div>
+                  <Badge variant="warning">Soon</Badge>
+                </div>
+              ))}
+            </CardBody>
           </Card>
         </div>
       )}

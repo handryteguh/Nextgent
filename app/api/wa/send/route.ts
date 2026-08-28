@@ -4,10 +4,11 @@ import { messages, contacts } from "@/db/schema";
 import { isAuthed } from "@/lib/auth";
 import { eq } from "drizzle-orm";
 
-const FONNTE_TOKEN = process.env.FONNTE_TOKEN ?? "";
-const FONNTE_API = "https://api.fonnte.com/send";
+// Hermes WA bridge di VPS — kirim pesan via Hermes gateway
+const HERMES_VPS_URL = process.env.HERMES_VPS_URL ?? ""; // e.g. https://vps.domain.com:5000
+const HERMES_VPS_TOKEN = process.env.HERMES_VPS_TOKEN ?? "";
 
-// POST /api/wa/send — kirim pesan WA via Fonnte
+// POST /api/wa/send — kirim pesan WA via Hermes VPS bridge
 // Body: { phone, message }
 export async function POST(req: NextRequest) {
   if (!(await isAuthed())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -20,10 +21,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "phone dan message wajib" }, { status: 400 });
   }
 
-  // Simpan ke DB dulu (status sent, belum delivered)
+  // Cari contactId kalau ada
   const contact = db.select({ id: contacts.id }).from(contacts).where(eq(contacts.phone, phone)).get();
   const now = Date.now();
 
+  // Simpan ke DB dulu
   const [msg] = await db.insert(messages).values({
     phone,
     direction: "out",
@@ -33,54 +35,46 @@ export async function POST(req: NextRequest) {
     createdAt: now,
   }).returning();
 
-  // Kirim via Fonnte kalau token tersedia
-  if (!FONNTE_TOKEN) {
+  // Kirim via Hermes VPS bridge kalau URL tersedia
+  if (!HERMES_VPS_URL || !HERMES_VPS_TOKEN) {
     return NextResponse.json({
       ok: true,
       saved: true,
       sent: false,
-      note: "FONNTE_TOKEN belum diset — pesan tersimpan di DB tapi belum dikirim ke WA",
+      note: "HERMES_VPS_URL / HERMES_VPS_TOKEN belum diset — pesan tersimpan di DB, belum dikirim ke WA",
       data: msg,
     });
   }
 
   try {
-    const res = await fetch(FONNTE_API, {
+    const res = await fetch(`${HERMES_VPS_URL}/api/wa/send`, {
       method: "POST",
       headers: {
-        "Authorization": FONNTE_TOKEN,
-        "Content-Type": "application/x-www-form-urlencoded",
+        "Authorization": `Bearer ${HERMES_VPS_TOKEN}`,
+        "Content-Type": "application/json",
       },
-      body: new URLSearchParams({
-        target: phone,
-        message,
-        delay: "3", // 3 detik delay (ban safety)
-        countryCode: "62",
-      }),
+      body: JSON.stringify({ phone, message }),
+      signal: AbortSignal.timeout(10_000),
     });
 
-    const data = await res.json().catch(() => ({})) as { status?: boolean; reason?: string; id?: string };
+    const data = await res.json().catch(() => ({})) as { ok?: boolean; waId?: string; error?: string };
 
-    if (data.status) {
-      // Update status delivered
-      await db.update(messages).set({ status: "delivered", waId: String(data.id ?? "") }).where(eq(messages.id, msg.id));
-      return NextResponse.json({ ok: true, saved: true, sent: true, waId: data.id, data: msg });
+    if (data.ok) {
+      await db.update(messages)
+        .set({ status: "delivered", waId: data.waId ?? null })
+        .where(eq(messages.id, msg.id));
+      return NextResponse.json({ ok: true, saved: true, sent: true, waId: data.waId, data: msg });
     } else {
-      // Fonnte error — pesan tetap tersimpan di DB
       return NextResponse.json({
-        ok: false,
-        saved: true,
-        sent: false,
-        error: data.reason ?? "Fonnte error",
+        ok: false, saved: true, sent: false,
+        error: data.error ?? "Hermes VPS error",
         data: msg,
       }, { status: 502 });
     }
   } catch (e) {
     const err = e as Error;
     return NextResponse.json({
-      ok: false,
-      saved: true,
-      sent: false,
+      ok: false, saved: true, sent: false,
       error: err.message,
       data: msg,
     }, { status: 502 });

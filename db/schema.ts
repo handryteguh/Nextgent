@@ -134,7 +134,26 @@ export const tasks = sqliteTable("tasks", {
   createdAt: integer("created_at").notNull().default(sql`(unixepoch() * 1000)`),
 });
 
-// ---------- SETTINGS (key-value) ----------
+// ---------- AUTO RULES (keyword → auto reply) ----------
+export const autoRules = sqliteTable("auto_rules", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  keyword: text("keyword").notNull(),
+  reply: text("reply").notNull(),
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+  hits: integer("hits").notNull().default(0),
+  createdAt: integer("created_at").notNull().default(sql`(unixepoch() * 1000)`),
+});
+
+// ---------- AI LOGS (log percakapan AI CS) ----------
+export const aiLogs = sqliteTable("ai_logs", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  contactName: text("contact_name"),
+  phone: text("phone"),
+  request: text("request").notNull(),
+  response: text("response").notNull(),
+  matched: text("matched").notNull().default("AI CS"),
+  createdAt: integer("created_at").notNull().default(sql`(unixepoch() * 1000)`),
+});
 export const settings = sqliteTable("settings", {
   key: text("key").primaryKey(),
   value: text("value"), // JSON string
