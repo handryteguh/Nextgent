@@ -134,6 +134,19 @@ export const tasks = sqliteTable("tasks", {
   createdAt: integer("created_at").notNull().default(sql`(unixepoch() * 1000)`),
 });
 
+// ---------- ACTIVITY LOGS ----------
+export const activityLogs = sqliteTable("activity_logs", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  actor: text("actor").notNull().default("system"),
+  action: text("action").notNull(),
+  entity: text("entity"),
+  entityId: integer("entity_id"),
+  detail: text("detail"),
+  status: text("status", { enum: ["ok", "fail", "warn"] }).default("ok"),
+  ip: text("ip"),
+  createdAt: integer("created_at").notNull().default(sql`(unixepoch() * 1000)`),
+});
+
 // ---------- AUTO RULES (keyword → auto reply) ----------
 export const autoRules = sqliteTable("auto_rules", {
   id: integer("id").primaryKey({ autoIncrement: true }),
