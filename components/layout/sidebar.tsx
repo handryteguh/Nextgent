@@ -1,9 +1,42 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState, useCallback } from "react";
 import { cn } from "@/lib/utils";
 
+// ── Badge data dari /api/summary ─────────────────────────────────────────────
+type SummaryData = {
+  tasks: { overdue: number };
+  followup: { active: number };
+};
+
+function useSummary() {
+  const [data, setData] = useState<SummaryData | null>(null);
+  const fetch_ = useCallback(async () => {
+    try {
+      const res = await fetch("/api/summary", { cache: "no-store" });
+      if (res.ok) {
+        const json = await res.json();
+        setData(json.data);
+      }
+    } catch {
+      // silent — badge gak muncul kalau gagal
+    }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const tick = async () => { if (!cancelled) await fetch_(); };
+    tick();
+    const interval = setInterval(tick, 30_000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [fetch_]);
+
+  return data;
+}
+
+// ── Nav items ─────────────────────────────────────────────────────────────────
 const navItems = [
   {
     name: "Dashboard",
@@ -17,7 +50,7 @@ const navItems = [
   {
     name: "Inbox",
     href: "/inbox",
-    badge: "12",
+    badgeKey: null as null, // inbox badge butuh bridge — static "0" dulu
     icon: (active: boolean) => (
       <svg className={cn("h-[18px] w-[18px]", active ? "text-[#0B0E14]" : "text-faint")} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h8m-8 4h5m-9 6h16a2 2 0 002-2V6a2 2 0 00-2-2H4a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -36,7 +69,7 @@ const navItems = [
   {
     name: "Follow-up",
     href: "/followup",
-    badge: "3",
+    badgeKey: "followup" as const,
     icon: (active: boolean) => (
       <svg className={cn("h-[18px] w-[18px]", active ? "text-[#0B0E14]" : "text-faint")} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -55,7 +88,7 @@ const navItems = [
   {
     name: "Tasks",
     href: "/tasks",
-    badge: "4",
+    badgeKey: "tasks" as const,
     icon: (active: boolean) => (
       <svg className={cn("h-[18px] w-[18px]", active ? "text-[#0B0E14]" : "text-faint")} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
@@ -67,7 +100,7 @@ const navItems = [
     href: "/automation",
     icon: (active: boolean) => (
       <svg className={cn("h-[18px] w-[18px]", active ? "text-[#0B0E14]" : "text-faint")} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17H3a2 2 0 01-2-2V5a2 2 0 012-2h14a2 2 0 012 2v10a2 2 0 01-2 2h-2" />
       </svg>
     ),
   },
@@ -81,16 +114,7 @@ const navItems = [
     ),
   },
   {
-    name: "Logs",
-    href: "/logs",
-    icon: (active: boolean) => (
-      <svg className={cn("h-[18px] w-[18px]", active ? "text-[#0B0E14]" : "text-faint")} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-      </svg>
-    ),
-  },
-  {
-    name: "Pengaturan",
+    name: "Settings",
     href: "/settings",
     icon: (active: boolean) => (
       <svg className={cn("h-[18px] w-[18px]", active ? "text-[#0B0E14]" : "text-faint")} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -101,75 +125,93 @@ const navItems = [
   },
 ];
 
+// ── Badge helper ───────────────────────────────────────────────────────────────
+function NavBadge({ count, danger }: { count: number; danger?: boolean }) {
+  if (count === 0) return null;
+  return (
+    <span className={cn(
+      "ml-auto flex h-4 min-w-[16px] items-center justify-center rounded-full px-1 text-[9px] font-extrabold",
+      danger
+        ? "bg-danger text-white"
+        : "bg-accent text-[#0B0E14]"
+    )}>
+      {count > 99 ? "99+" : count}
+    </span>
+  );
+}
+
+// ── Sidebar ────────────────────────────────────────────────────────────────────
 export function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
+  const summary = useSummary();
+
+  function getBadge(item: typeof navItems[number]): { count: number; danger: boolean } | null {
+    if (!("badgeKey" in item) || !item.badgeKey || !summary) return null;
+    if (item.badgeKey === "tasks") return { count: summary.tasks.overdue, danger: true };
+    if (item.badgeKey === "followup") return { count: summary.followup.active, danger: false };
+    return null;
+  }
+
+  async function handleLogout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    router.push("/login");
+  }
 
   return (
-    <aside className="fixed inset-y-0 left-0 z-30 flex w-60 flex-col border-r border-edge bg-base">
-      {/* Brand */}
-      <div className="flex items-center gap-2.5 px-5 py-5">
-        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent">
-          <svg className="h-5 w-5 text-[#0B0E14]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+    <aside className="flex h-full w-56 flex-col border-r border-edge bg-surface">
+      {/* Logo */}
+      <div className="flex h-14 items-center gap-2.5 border-b border-edge px-4">
+        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-accent to-accent-hover shadow-[0_0_12px_rgba(99,102,241,0.4)]">
+          <svg className="h-4 w-4 text-[#0B0E14]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
           </svg>
         </div>
-        <div>
-          <p className="text-sm font-extrabold leading-none tracking-tight">
-            <span className="text-slate-100">Mina</span>
-            <span className="text-accent">-UI</span>
-          </p>
-          <p className="mt-1 text-[9px] font-semibold uppercase tracking-widest text-faint">
-            CRM + WA Follow-up
-          </p>
-        </div>
+        <span className="text-sm font-extrabold tracking-tight text-slate-100">Mina-UI</span>
+        <span className="ml-auto rounded bg-accent/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-accent">Beta</span>
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-2">
-        {navItems.map((item) => {
-          const active = pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href));
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={cn(
-                "group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors",
-                active
-                  ? "bg-accent text-[#0B0E14] shadow-[0_0_16px_rgba(245,192,68,0.15)]"
-                  : "text-slate-300 hover:bg-white/5"
-              )}
-            >
-              {active && (
-                <span className="absolute left-0 top-1/2 h-6 w-1 -translate-y-1/2 rounded-r-full bg-accent-hover" />
-              )}
-              {item.icon(active)}
-              <span className="flex-1">{item.name}</span>
-              {item.badge && (
-                <span className={cn(
-                  "rounded-full px-1.5 py-0.5 text-[9px] font-bold",
-                  active ? "bg-[#0B0E14]/15 text-[#0B0E14]" : "bg-accent/15 text-accent"
-                )}>
-                  {item.badge}
-                </span>
-              )}
-            </Link>
-          );
-        })}
+      <nav className="flex-1 overflow-y-auto px-2 py-3">
+        <div className="space-y-0.5">
+          {navItems.map((item) => {
+            const active = pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href));
+            const badge = getBadge(item);
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={cn(
+                  "group flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-all",
+                  active
+                    ? "bg-accent text-[#0B0E14] shadow-[0_0_12px_rgba(99,102,241,0.25)]"
+                    : "text-slate-400 hover:bg-white/5 hover:text-slate-100"
+                )}
+              >
+                {item.icon(active)}
+                <span className="flex-1">{item.name}</span>
+                {badge && <NavBadge count={badge.count} danger={badge.danger} />}
+              </Link>
+            );
+          })}
+        </div>
       </nav>
 
-      {/* Profile */}
-      <div className="border-t border-edge px-4 py-4">
-        <div className="flex items-center gap-3">
+      {/* User */}
+      <div className="border-t border-edge p-3">
+        <div className="flex items-center gap-2.5 rounded-lg px-2 py-1.5">
           <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-accent to-accent-hover text-sm font-extrabold text-[#0B0E14]">
             H
           </div>
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-bold text-slate-100">Handry</p>
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-faint">
-              Owner
-            </p>
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-faint">Owner</p>
           </div>
-          <button className="text-faint transition-colors hover:text-danger" title="Logout">
+          <button
+            onClick={handleLogout}
+            className="text-faint transition-colors hover:text-danger"
+            title="Logout"
+          >
             <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
             </svg>
