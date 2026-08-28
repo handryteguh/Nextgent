@@ -4,8 +4,8 @@ import { messages, contacts } from "@/db/schema";
 import { isAuthed } from "@/lib/auth";
 import { eq } from "drizzle-orm";
 
-// Hermes WA bridge di VPS — kirim pesan via Hermes gateway
-const HERMES_VPS_URL = process.env.HERMES_VPS_URL ?? ""; // e.g. https://vps.domain.com:5000
+// Hermes WA bridge di VPS — http://43.157.212.210:3002
+const HERMES_VPS_URL = process.env.HERMES_VPS_URL ?? ""; // e.g. http://43.157.212.210:3002
 const HERMES_VPS_TOKEN = process.env.HERMES_VPS_TOKEN ?? "";
 
 // POST /api/wa/send — kirim pesan WA via Hermes VPS bridge
@@ -47,7 +47,9 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const res = await fetch(`${HERMES_VPS_URL}/api/wa/send`, {
+    // VPS bridge endpoint: POST /send  { phone, message }
+    // Response: { status: "ok", messageId: "..." }
+    const res = await fetch(`${HERMES_VPS_URL}/send`, {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${HERMES_VPS_TOKEN}`,
@@ -57,17 +59,17 @@ export async function POST(req: NextRequest) {
       signal: AbortSignal.timeout(10_000),
     });
 
-    const data = await res.json().catch(() => ({})) as { ok?: boolean; waId?: string; error?: string };
+    const data = await res.json().catch(() => ({})) as { status?: string; messageId?: string; error?: string };
 
-    if (data.ok) {
+    if (data.status === "ok") {
       await db.update(messages)
-        .set({ status: "delivered", waId: data.waId ?? null })
+        .set({ status: "delivered", waId: data.messageId ?? null })
         .where(eq(messages.id, msg.id));
-      return NextResponse.json({ ok: true, saved: true, sent: true, waId: data.waId, data: msg });
+      return NextResponse.json({ ok: true, saved: true, sent: true, waId: data.messageId, data: msg });
     } else {
       return NextResponse.json({
         ok: false, saved: true, sent: false,
-        error: data.error ?? "Hermes VPS error",
+        error: data.error ?? "Hermes VPS bridge error",
         data: msg,
       }, { status: 502 });
     }

@@ -17,17 +17,24 @@ export async function GET() {
   }
 
   try {
-    const res = await fetch(`${HERMES_VPS_URL}/api/wa/status`, {
+    // VPS bridge endpoint: GET /status
+    // Response: { api: { status, uptime, port, ... }, bridge: { status, queueLength, uptime, ... } }
+    const res = await fetch(`${HERMES_VPS_URL}/status`, {
       method: "GET",
       headers: { "Authorization": `Bearer ${HERMES_VPS_TOKEN}` },
       signal: AbortSignal.timeout(5_000),
     });
 
-    const data = await res.json().catch(() => ({})) as { connected?: boolean; reason?: string };
+    const data = await res.json().catch(() => ({})) as {
+      api?: { status?: string; uptime?: number; port?: number; memMb?: number };
+      bridge?: { status?: string; queueLength?: number; uptime?: number };
+    };
 
+    const bridgeConnected = data.bridge?.status === "connected";
     return NextResponse.json({
-      connected: data.connected ?? false,
-      reason: data.reason,
+      connected: bridgeConnected,
+      api: data.api ?? null,
+      bridge: data.bridge ?? null,
       provider: "hermes-vps",
     });
   } catch {

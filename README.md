@@ -10,7 +10,7 @@ Dashboard CRM berbasis WhatsApp untuk DapurMina. Dibangun dengan Next.js App Rou
 | Styling | Tailwind CSS 4 |
 | Database | SQLite + Drizzle ORM (better-sqlite3) |
 | Auth | PIN login (scrypt hash) + HMAC session cookie |
-| WA Bridge | Hermes Agent `mina-cs` di VPS via TailScale |
+| WA Bridge | Hermes WA Bridge `mina-cs` di VPS (port 3002, public IP) |
 
 ## Cara Jalankan
 
@@ -48,9 +48,9 @@ Buat file `.env.local` di root project:
 # Session
 SESSION_SECRET=your-random-secret-here
 
-# WhatsApp Bridge (Hermes Agent mina-cs di VPS via TailScale)
-HERMES_VPS_URL=http://100.119.12.45:3002
-HERMES_VPS_TOKEN=your-hermes-token
+# WhatsApp Bridge (Hermes mina-cs di VPS, port 3002)
+HERMES_VPS_URL=http://43.157.212.210:3002
+HERMES_VPS_TOKEN=your-bridge-token
 
 # Webhook secret (untuk validasi payload dari Hermes VPS)
 WEBHOOK_SECRET=your-webhook-secret
@@ -87,12 +87,25 @@ node db/migrate.js
 ```
 Customer WA
     ↓
-Hermes Agent mina-cs (VPS, CS bot 24jam)
-    ↓ webhook
-Mina-UI /api/webhook/wa (lokal, via TailScale)
+Hermes mina-cs WA Bridge (VPS 43.157.212.210:3002)
+    ↓ REST API (Bearer token)
+Mina-UI API Routes (lokal)
+    ├── GET  /api/wa/status   → pull status & uptime bridge
+    ├── POST /api/wa/send     → push kirim pesan WA
+    ├── GET  /api/wa/logs     → pull logs bridge (?n=N)
+    └── POST /api/webhook/wa  → terima pesan masuk dari bridge
     ↓
 SQLite DB → auto follow-up scheduler
 ```
+
+## WA Bridge API Endpoints
+
+| Route Mina-UI | Method | Fungsi |
+|---|---|---|
+| `/api/wa/status` | GET | Pull status koneksi bridge + uptime |
+| `/api/wa/send` | POST | Push kirim pesan WA `{ phone, message }` |
+| `/api/wa/logs` | GET | Pull logs VPS `?n=20` |
+| `/api/webhook/wa` | POST | Terima pesan masuk dari bridge |
 
 ## Scripts
 
@@ -106,6 +119,7 @@ npm run lint     # ESLint check
 
 | Commit | Fitur |
 |---|---|
+| `latest` | WA Bridge: fix endpoints + tambah /api/wa/logs route |
 | `8b08886` | Automation: keyword rules + AI log + Hermes bridge |
 | `65049e2` | Logs: activity_logs DB + API + UI |
 | `69f815e` | Settings: TailScale card + IP/port config |
