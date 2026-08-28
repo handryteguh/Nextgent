@@ -10,13 +10,13 @@ export default function DashboardLayout({
 }) {
   return (
     <div className="min-h-screen bg-base">
-      {/* Sidebar — desktop (md+) */}
-      <div className="hidden md:block">
+      {/* Sidebar — fixed, desktop (md+) */}
+      <div className="hidden md:fixed md:inset-y-0 md:left-0 md:z-40 md:block md:w-56">
         <Sidebar />
       </div>
 
-      {/* Konten: mobile full-width, desktop geser ke kanan sidebar */}
-      <main className="pb-20 md:ml-60 md:min-h-screen md:px-8 md:py-6">
+      {/* Konten: mobile full-width, desktop geser ke kanan sidebar w-56 = 224px */}
+      <main className="pb-20 md:ml-56 md:min-h-screen md:px-8 md:py-6">
         <div className="px-4 py-4 md:px-0 md:py-0">{children}</div>
       </main>
 
