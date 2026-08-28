@@ -20,6 +20,8 @@ interface AppSettings {
   send_start: string;
   send_stop: string;
   app_version: string;
+  tailscale_ip?: string;
+  tailscale_port?: string;
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -100,6 +102,8 @@ export default function SettingsPage() {
           fu_delay_3: cfg.fu_delay_3,
           send_start: cfg.send_start,
           send_stop: cfg.send_stop,
+          tailscale_ip: cfg.tailscale_ip ?? "",
+          tailscale_port: cfg.tailscale_port ?? "3001",
         }),
       });
       const json = await res.json();
@@ -291,7 +295,57 @@ export default function SettingsPage() {
           </CardBody>
         </Card>
 
-        {/* 4. Tentang */}
+        {/* 4. TailScale */}
+        <Card>
+          <CardHeader title="🔗 TailScale" subtitle="Akses dashboard dari HP / device lain via TailScale" />
+          <CardBody className="space-y-4">
+            <SettingRow label="TailScale IP" hint="IP laptop kamu di jaringan TailScale (cek di tailscale.com/admin atau app TailScale)">
+              <div className="flex items-center gap-2">
+                <Input
+                  placeholder="100.x.x.x"
+                  value={cfg.tailscale_ip ?? ""}
+                  onChange={(e) => setCfg((c) => ({ ...c, tailscale_ip: e.target.value }))}
+                  className="w-36 font-mono text-sm"
+                />
+              </div>
+            </SettingRow>
+            <SettingRow label="Port" hint="Port dev server (default: 3001)">
+              <Input
+                type="number"
+                placeholder="3001"
+                value={cfg.tailscale_port ?? "3001"}
+                onChange={(e) => setCfg((c) => ({ ...c, tailscale_port: e.target.value }))}
+                className="w-24 text-center font-mono"
+              />
+            </SettingRow>
+            {cfg.tailscale_ip && (
+              <div className="rounded-lg border border-accent/30 bg-accent/5 p-3">
+                <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-accent">URL Akses dari HP</p>
+                <p className="font-mono text-sm text-slate-200 break-all">
+                  http://{cfg.tailscale_ip}:{cfg.tailscale_port ?? "3001"}
+                </p>
+                <p className="mt-1 text-[10px] text-faint">
+                  Pastikan TailScale aktif di laptop + HP, dan firewall Windows allow port {cfg.tailscale_port ?? "3001"}.
+                </p>
+              </div>
+            )}
+            <div className="rounded-lg border border-edge/60 bg-surface-2/50 p-3 text-xs text-muted space-y-1">
+              <p className="font-semibold text-slate-300">Cara setup TailScale:</p>
+              <ol className="list-decimal pl-4 space-y-0.5">
+                <li>Install TailScale di laptop: <span className="text-accent font-mono">tailscale.com/download</span></li>
+                <li>Install TailScale di HP (iOS/Android)</li>
+                <li>Login dengan akun yang sama di keduanya</li>
+                <li>Cek IP laptop di app TailScale atau <span className="text-accent font-mono">tailscale ip -4</span></li>
+                <li>Isi IP di atas → akses dari HP via browser</li>
+              </ol>
+            </div>
+            <Button onClick={handleSaveSettings} disabled={cfgSaving} className="w-full">
+              {cfgSaving ? "Menyimpan…" : "Simpan TailScale Settings"}
+            </Button>
+          </CardBody>
+        </Card>
+
+        {/* 5. Tentang */}
         <Card>
           <CardHeader title="ℹ️ Tentang Aplikasi" />
           <CardBody className="space-y-2">
@@ -300,7 +354,7 @@ export default function SettingsPage() {
               { label: "Stack", value: "Next.js 16.3 + React 19 + Tailwind 4" },
               { label: "Database", value: "SQLite + Drizzle ORM ✅" },
               { label: "Auth", value: "PIN (scrypt) + HMAC session cookie" },
-              { label: "WA Bridge", value: "VPS solusiadmin-core-vps (Phase 3)" },
+              { label: "WA Bridge", value: "Hermes Agent Lokal (via TailScale)" },
             ].map(({ label, value }) => (
               <div key={label} className="flex justify-between rounded-lg border border-edge/60 bg-surface-2/50 px-4 py-3">
                 <span className="text-muted">{label}</span>
