@@ -95,7 +95,7 @@ export async function GET(req: NextRequest) {
     // Simpan pesan
     await db.insert(messages).values({
       phone,
-      direction: "in",
+      direction: (m.direction === "out") ? "out" : "in",
       text,
       status: "delivered",
       waId: m.id ?? null,
