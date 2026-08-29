@@ -147,6 +147,7 @@ function ImportWaModal({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [imported, setImported] = useState(0);
+  const [skippedCount, setSkippedCount] = useState(0);
 
   // Fetch dari VPS bridge
   const fetchContacts = async () => {
@@ -194,7 +195,8 @@ function ImportWaModal({
 
   const handleImport = async () => {
     setStep("importing");
-    let count = 0;
+    let inserted = 0;
+    let skipped = 0;
     for (const contact of waContacts.filter((c) => selected.has(c.phone))) {
       try {
         const res = await fetch("/api/contacts", {
@@ -207,12 +209,14 @@ function ImportWaModal({
             source: "wa-import",
           }),
         });
-        if (res.ok) count++;
+        if (res.status === 409) skipped++;      // sudah ada — skip
+        else if (res.ok) inserted++;            // baru masuk
       } catch { /* skip */ }
     }
-    setImported(count);
+    setImported(inserted);
+    setSkippedCount(skipped);
     setStep("done");
-    onImported(count);
+    onImported(inserted);
   };
 
   return (
@@ -285,7 +289,10 @@ function ImportWaModal({
         {step === "done" && (
           <div className="space-y-4 text-center py-4">
             <p className="text-2xl">✅</p>
-            <p className="text-sm font-medium">{imported} kontak berhasil diimport!</p>
+            <p className="text-sm font-medium">{imported} kontak baru berhasil diimport!</p>
+            {skippedCount > 0 && (
+              <p className="text-xs text-muted">{skippedCount} kontak sudah ada sebelumnya (di-skip)</p>
+            )}
             <Button onClick={onClose} className="w-full">Tutup</Button>
           </div>
         )}
