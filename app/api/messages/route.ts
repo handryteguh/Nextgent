@@ -81,9 +81,10 @@ export async function POST(req: NextRequest) {
       if (data.status === "ok") {
         sent = true;
         waId = data.messageId ?? null;
-        await db.update(messages)
+        db.update(messages)
           .set({ status: "delivered", waId })
-          .where(eq(messages.id, msg.id));
+          .where(eq(messages.id, msg.id))
+          .run();
       }
     } catch { /* bridge error — pesan tetap tersimpan di DB */ }
   }

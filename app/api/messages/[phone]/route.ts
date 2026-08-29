@@ -12,6 +12,7 @@ export async function GET(
   if (!(await isAuthed())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { phone } = await params;
+
   const rows = db
     .select()
     .from(messages)
@@ -19,14 +20,15 @@ export async function GET(
     .orderBy(asc(messages.createdAt))
     .all();
 
-  // Mark semua pesan masuk sebagai read
-  await db
-    .update(messages)
+  // Mark semua pesan masuk sebagai read (sync — jangan await)
+  db.update(messages)
     .set({ status: "read" })
-    .where(eq(messages.phone, phone));
+    .where(eq(messages.phone, phone))
+    .run();
 
   // Info kontak
   const contact = db.select().from(contacts).where(eq(contacts.phone, phone)).get();
 
   return NextResponse.json({ data: rows, contact: contact ?? null });
 }
+
