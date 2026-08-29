@@ -1,210 +1,215 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { PageHeader } from "@/components/layout/page-header";
-import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { FilterPills } from "@/components/ui/filter-pills";
-import { DataTable, type Column } from "@/components/ui/data-table";
-import { timeAgo } from "@/lib/utils";
 
-// ── Types ──────────────────────────────────────────────────────────────────────
-type Log = {
-  id: number;
-  actor: string;
-  action: string;
-  entity: string | null;
-  entityId: number | null;
-  detail: string | null;
-  status: "ok" | "fail" | "warn" | null;
-  ip: string | null;
-  createdAt: number;
+type LogEntry = {
+  ts: string;
+  level: string;
+  msg: string;
+  [key: string]: unknown;
 };
 
-type Meta = {
-  total: number;
-  counts: Record<string, number>;
-};
+type Filter = "all" | "error" | "warn" | "info";
 
-// ── Main ───────────────────────────────────────────────────────────────────────
+function levelColor(level: string) {
+  switch (level?.toLowerCase()) {
+    case "error": return "text-red-400";
+    case "warn":  return "text-yellow-400";
+    case "info":  return "text-blue-400";
+    default:      return "text-muted-foreground";
+  }
+}
+
+function levelBadge(level: string) {
+  switch (level?.toLowerCase()) {
+    case "error": return "bg-red-500/20 text-red-400 border border-red-500/30";
+    case "warn":  return "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30";
+    case "info":  return "bg-blue-500/20 text-blue-400 border border-blue-500/30";
+    default:      return "bg-muted text-muted-foreground border border-border";
+  }
+}
+
 export default function LogsPage() {
-  const [logs, setLogs] = useState<Log[]>([]);
-  const [meta, setMeta] = useState<Meta>({ total: 0, counts: {} });
-  const [filter, setFilter] = useState("semua");
-  const [query, setQuery] = useState("");
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [filter, setFilter] = useState<Filter>("all");
+  const [n, setN] = useState(50);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
 
-  const fetchLogs = useCallback(async (showRefresh = false) => {
-    if (showRefresh) setRefreshing(true);
+  const fetchLogs = useCallback(async () => {
     try {
-      const res = await fetch(`/api/logs?filter=${filter}&limit=200`, { cache: "no-store" });
-      if (res.ok) {
-        const data = await res.json();
-        setLogs(data.data ?? []);
-        setMeta(data.meta ?? { total: 0, counts: {} });
+      const res = await fetch(`/api/wa/logs?n=${n}`, { cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json() as { ok: boolean; logs: LogEntry[]; reason?: string };
+      if (data.ok) {
+        setLogs(data.logs ?? []);
+        setError(null);
+        setLastRefresh(new Date());
+      } else {
+        setError(data.reason ?? "Gagal ambil logs");
       }
+    } catch (e) {
+      setError((e as Error).message);
     } finally {
       setLoading(false);
-      if (showRefresh) setRefreshing(false);
     }
-  }, [filter]);
+  }, [n]);
 
+  // Initial + auto-refresh
   useEffect(() => {
     let cancelled = false;
     const tick = async () => { if (!cancelled) await fetchLogs(); };
-    void tick();
-    const interval = setInterval(() => { void tick(); }, 30_000);
+    tick();
+    if (!autoRefresh) return;
+    const interval = setInterval(tick, 5_000);
     return () => { cancelled = true; clearInterval(interval); };
-  }, [fetchLogs]);
+  }, [fetchLogs, autoRefresh]);
 
-  // ── Filter pills ───────────────────────────────────────────────────────────
-  const pills = [
-    { key: "semua", label: "Semua", count: meta.total },
-    { key: "ok", label: "OK", count: meta.counts["ok"] ?? 0 },
-    { key: "warn", label: "Warning", count: meta.counts["warn"] ?? 0 },
-    { key: "fail", label: "Gagal", count: meta.counts["fail"] ?? 0 },
-  ];
+  // Scroll to bottom on new logs
+  useEffect(() => {
+    if (autoRefresh) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [logs, autoRefresh]);
 
-  // ── Client-side search ─────────────────────────────────────────────────────
   const filtered = logs.filter((l) => {
-    if (!query) return true;
-    const q = query.toLowerCase();
-    return (
-      l.actor.toLowerCase().includes(q) ||
-      l.action.toLowerCase().includes(q) ||
-      (l.entity ?? "").toLowerCase().includes(q) ||
-      (l.detail ?? "").toLowerCase().includes(q) ||
-      (l.ip ?? "").includes(q)
-    );
+    if (filter === "all") return true;
+    return l.level?.toLowerCase() === filter;
   });
 
-  // ── Status badge ───────────────────────────────────────────────────────────
-  function statusBadge(status: Log["status"]) {
-    if (status === "ok") return <Badge variant="success">OK</Badge>;
-    if (status === "warn") return <Badge variant="warning">Warn</Badge>;
-    if (status === "fail") return <Badge variant="danger">Gagal</Badge>;
-    return <Badge variant="default">—</Badge>;
-  }
-
-  // ── Action badge ───────────────────────────────────────────────────────────
-  function actionBadge(action: string) {
-    const map: Record<string, "info" | "success" | "warning" | "danger" | "default"> = {
-      LOGIN: "info",
-      LOGOUT: "default",
-      SEND_WA: "success",
-      FOLLOWUP: "success",
-      WEBHOOK: "info",
-      CREATE: "success",
-      UPDATE: "warning",
-      DELETE: "danger",
-    };
-    return <Badge variant={map[action] ?? "default"}>{action}</Badge>;
-  }
-
-  // ── Columns ────────────────────────────────────────────────────────────────
-  const cols: Column<Log>[] = [
-    {
-      key: "createdAt",
-      header: "Waktu",
-      render: (l) => (
-        <span className="whitespace-nowrap text-xs text-faint">{timeAgo(l.createdAt)}</span>
-      ),
-    },
-    {
-      key: "actor",
-      header: "Actor",
-      render: (l) => (
-        <span className="max-w-[120px] truncate text-xs font-semibold text-slate-200">{l.actor}</span>
-      ),
-    },
-    {
-      key: "action",
-      header: "Aksi",
-      render: (l) => actionBadge(l.action),
-    },
-    {
-      key: "entity",
-      header: "Entity",
-      render: (l) => l.entity ? (
-        <span className="text-xs text-muted">
-          {l.entity}{l.entityId ? ` #${l.entityId}` : ""}
-        </span>
-      ) : <span className="text-xs text-faint">—</span>,
-    },
-    {
-      key: "detail",
-      header: "Detail",
-      render: (l) => (
-        <span className="line-clamp-1 max-w-xs text-xs text-muted">{l.detail ?? "—"}</span>
-      ),
-    },
-    {
-      key: "status",
-      header: "Status",
-      render: (l) => statusBadge(l.status),
-    },
-    {
-      key: "ip",
-      header: "IP",
-      render: (l) => (
-        <span className="whitespace-nowrap text-[10px] text-faint">{l.ip ?? "—"}</span>
-      ),
-    },
-  ];
+  const counts = {
+    all: logs.length,
+    error: logs.filter((l) => l.level?.toLowerCase() === "error").length,
+    warn: logs.filter((l) => l.level?.toLowerCase() === "warn").length,
+    info: logs.filter((l) => l.level?.toLowerCase() === "info").length,
+  };
 
   return (
-    <div>
+    <div className="space-y-4">
       <PageHeader
-        title="Activity Logs"
-        subtitle="Riwayat aksi sistem — login, kirim WA, follow-up, webhook"
-        actions={
+        title="WA Bridge Logs"
+        description="Live log dari Hermes VPS WA Bridge"
+        action={
           <div className="flex items-center gap-2">
-            <span className="text-[10px] text-faint">auto-refresh 30s</span>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => { void fetchLogs(true); }}
+            {/* N selector */}
+            <select
+              value={n}
+              onChange={(e) => setN(Number(e.target.value))}
+              className="text-xs rounded-lg border border-border bg-card px-2 py-1.5 text-foreground"
             >
-              {refreshing ? "↻ Menyegarkan..." : "↻ Refresh"}
-            </Button>
+              {[20, 50, 100].map((v) => (
+                <option key={v} value={v}>{v} baris</option>
+              ))}
+            </select>
+
+            {/* Auto-refresh toggle */}
+            <button
+              onClick={() => setAutoRefresh((p) => !p)}
+              className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition-colors ${
+                autoRefresh
+                  ? "bg-green-500/20 text-green-400 border-green-500/30"
+                  : "bg-muted text-muted-foreground border-border"
+              }`}
+            >
+              {autoRefresh ? "⏱ Auto (5s)" : "⏸ Paused"}
+            </button>
+
+            {/* Manual refresh */}
+            <button
+              onClick={fetchLogs}
+              className="text-xs px-3 py-1.5 rounded-lg border border-border bg-card text-foreground hover:bg-muted transition-colors"
+            >
+              ↻ Refresh
+            </button>
           </div>
         }
       />
 
-      <Card>
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-edge/60 px-5 py-4">
-          <FilterPills pills={pills} active={filter} onChange={setFilter} />
-          <div className="w-full sm:w-72">
-            <Input
-              placeholder="Cari actor, aksi, entity, detail, IP..."
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
+      {/* Filter tabs */}
+      <div className="flex gap-2">
+        {(["all", "error", "warn", "info"] as Filter[]).map((f) => (
+          <button
+            key={f}
+            onClick={() => setFilter(f)}
+            className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition-colors capitalize ${
+              filter === f
+                ? "bg-accent text-accent-foreground border-accent"
+                : "bg-card text-muted-foreground border-border hover:bg-muted"
+            }`}
+          >
+            {f === "all" ? "Semua" : f.toUpperCase()}
+            <span className="ml-1.5 opacity-70">{counts[f]}</span>
+          </button>
+        ))}
+
+        {lastRefresh && (
+          <span className="ml-auto text-xs text-muted-foreground self-center">
+            Update: {lastRefresh.toLocaleTimeString("id-ID")}
+          </span>
+        )}
+      </div>
+
+      {/* Log terminal */}
+      <div className="rounded-xl border border-border bg-[#0d1117] font-mono text-xs overflow-hidden">
+        {/* Terminal header */}
+        <div className="flex items-center gap-2 px-4 py-2 border-b border-border bg-[#161b22]">
+          <div className="flex gap-1.5">
+            <span className="w-3 h-3 rounded-full bg-red-500/70" />
+            <span className="w-3 h-3 rounded-full bg-yellow-500/70" />
+            <span className="w-3 h-3 rounded-full bg-green-500/70" />
           </div>
+          <span className="text-muted-foreground text-xs ml-2">wa-bridge.log — {filtered.length} entries</span>
         </div>
 
-        {loading ? (
-          <p className="py-10 text-center text-sm text-muted">Memuat log...</p>
-        ) : filtered.length === 0 ? (
-          <div className="py-12 text-center">
-            <p className="text-sm text-muted">Belum ada activity log</p>
-            <p className="mt-1 text-xs text-faint">
-              Log otomatis muncul setelah ada aksi: login, kirim WA, follow-up, webhook
-            </p>
-          </div>
-        ) : (
-          <DataTable columns={cols} rows={filtered} emptyText="Tidak ada log" />
-        )}
+        {/* Log content */}
+        <div className="p-4 max-h-[60vh] overflow-y-auto space-y-1">
+          {loading && (
+            <p className="text-muted-foreground">Memuat logs...</p>
+          )}
 
-        {!loading && meta.total > 0 && (
-          <div className="border-t border-edge/60 px-5 py-3 text-[11px] text-faint">
-            Menampilkan {filtered.length} dari {meta.total} log
-          </div>
-        )}
-      </Card>
+          {error && (
+            <p className="text-red-400">⚠ {error}</p>
+          )}
+
+          {!loading && !error && filtered.length === 0 && (
+            <p className="text-muted-foreground">Tidak ada log {filter !== "all" ? `level ${filter}` : ""}.</p>
+          )}
+
+          {filtered.map((log, i) => {
+            // Format extra fields
+            const extras = Object.entries(log)
+              .filter(([k]) => !["ts", "level", "msg"].includes(k))
+              .map(([k, v]) => `${k}=${JSON.stringify(v)}`)
+              .join(" ");
+
+            return (
+              <div key={i} className="flex gap-3 leading-relaxed hover:bg-white/5 px-1 rounded">
+                {/* Timestamp */}
+                <span className="text-muted-foreground shrink-0 w-[140px] truncate">
+                  {log.ts ? new Date(log.ts).toLocaleTimeString("id-ID", {
+                    hour: "2-digit", minute: "2-digit", second: "2-digit",
+                  }) : "—"}
+                </span>
+
+                {/* Level badge */}
+                <span className={`shrink-0 px-1.5 rounded text-[10px] font-bold uppercase w-12 text-center ${levelBadge(log.level)}`}>
+                  {log.level ?? "LOG"}
+                </span>
+
+                {/* Message */}
+                <span className={`flex-1 break-all ${levelColor(log.level)}`}>
+                  {log.msg}
+                  {extras && <span className="text-muted-foreground ml-2 opacity-60">{extras}</span>}
+                </span>
+              </div>
+            );
+          })}
+
+          <div ref={bottomRef} />
+        </div>
+      </div>
     </div>
   );
 }
