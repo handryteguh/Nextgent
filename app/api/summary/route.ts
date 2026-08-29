@@ -72,17 +72,33 @@ export async function GET() {
   });
 }
 
-async function getWaStatus(): Promise<{ connected: boolean }> {
-  const token = process.env.FONNTE_TOKEN ?? "";
-  if (!token) return { connected: false };
+async function getWaStatus(): Promise<{
+  connected: boolean;
+  uptime?: number;
+  queueLength?: number;
+  memMb?: number;
+}> {
+  const url = process.env.HERMES_VPS_URL ?? "";
+  const token = process.env.HERMES_VPS_TOKEN ?? "";
+  if (!url || !token) return { connected: false };
   try {
-    const res = await fetch("https://api.fonnte.com/device", {
+    // VPS bridge endpoint: GET /status
+    const res = await fetch(`${url}/status`, {
       method: "GET",
-      headers: { "Authorization": token },
+      headers: { "Authorization": `Bearer ${token}` },
       signal: AbortSignal.timeout(4000),
     });
-    const data = await res.json().catch(() => ({})) as { status?: boolean; device?: { status?: string } };
-    return { connected: !!(data.status && data.device?.status === "connect") };
+    const data = await res.json().catch(() => ({})) as {
+      api?: { status?: string; uptime?: number; memMb?: number };
+      bridge?: { status?: string; queueLength?: number; uptime?: number };
+    };
+    const connected = data.bridge?.status === "connected";
+    return {
+      connected,
+      uptime: data.bridge?.uptime,
+      queueLength: data.bridge?.queueLength ?? 0,
+      memMb: data.api?.memMb,
+    };
   } catch {
     return { connected: false };
   }

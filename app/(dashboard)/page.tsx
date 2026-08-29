@@ -14,7 +14,7 @@ type Summary = {
   followup: { active: number; paused: number; completed: number };
   deals: { active: number; pipelineValue: number; won: number };
   sequences: { total: number; active: number };
-  wa: { connected: boolean };
+  wa: { connected: boolean; uptime?: number; queueLength?: number; memMb?: number };
 };
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
@@ -179,15 +179,43 @@ const fuChartData = Array(14).fill(0);
 const chatChartData = Array(14).fill(0);
 
 // ── WA Status Banner ──────────────────────────────────────────────────────────
-function WaBanner({ connected }: { connected: boolean }) {
+function formatUptime(seconds?: number) {
+  if (!seconds) return null;
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (h > 0) return `${h}j ${m}m uptime`;
+  return `${m}m uptime`;
+}
+
+function WaBanner({ wa }: { wa: Summary["wa"] }) {
+  const { connected, uptime, queueLength, memMb } = wa;
   if (connected) {
     return (
-      <div className="mb-5 flex items-center gap-3 rounded-xl border border-success/30 bg-success/10 px-4 py-3">
-        <span className="flex h-2 w-2 items-center justify-center">
-          <span className="absolute inline-flex h-2 w-2 animate-ping rounded-full bg-success opacity-75" />
-          <span className="relative inline-flex h-2 w-2 rounded-full bg-success" />
-        </span>
-        <p className="text-sm font-semibold text-success">WhatsApp terhubung — bridge aktif</p>
+      <div className="mb-5 flex items-center justify-between gap-3 rounded-xl border border-success/30 bg-success/10 px-4 py-3">
+        <div className="flex items-center gap-3">
+          <span className="relative flex h-2 w-2 shrink-0">
+            <span className="absolute inline-flex h-2 w-2 animate-ping rounded-full bg-success opacity-75" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-success" />
+          </span>
+          <p className="text-sm font-semibold text-success">WhatsApp terhubung — bridge aktif</p>
+        </div>
+        <div className="flex items-center gap-3 text-xs text-muted">
+          {formatUptime(uptime) && (
+            <span className="rounded-md border border-edge/40 bg-surface-2/50 px-2 py-0.5">
+              {formatUptime(uptime)}
+            </span>
+          )}
+          {queueLength !== undefined && (
+            <span className="rounded-md border border-edge/40 bg-surface-2/50 px-2 py-0.5">
+              queue: {queueLength}
+            </span>
+          )}
+          {memMb !== undefined && (
+            <span className="rounded-md border border-edge/40 bg-surface-2/50 px-2 py-0.5">
+              {memMb} MB
+            </span>
+          )}
+        </div>
       </div>
     );
   }
@@ -279,7 +307,7 @@ export default function DashboardPage() {
       />
 
       {/* WA Status Banner */}
-      <WaBanner connected={s?.wa.connected ?? false} />
+      <WaBanner wa={s?.wa ?? { connected: false }} />
 
       {/* KPI Cards */}
       <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
