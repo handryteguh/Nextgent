@@ -134,6 +134,29 @@ export default function InboxPage() {
     return () => clearInterval(interval);
   }, [fetchConvos]);
 
+  // ── Poll pesan masuk dari VPS bridge (tiap 15 detik) ──────────────────────
+  useEffect(() => {
+    let cancelled = false;
+    let lastTs = 0;
+    const poll = async () => {
+      try {
+        const res = await fetch(`/api/wa/poll?since=${lastTs}&limit=50`, { cache: "no-store" });
+        if (res.ok && !cancelled) {
+          const data = await res.json() as { ok: boolean; saved: number; lastTs: number };
+          if (data.ok && data.saved > 0) {
+            lastTs = data.lastTs;
+            await fetchConvos(); // refresh conversation list kalau ada pesan baru
+          } else if (data.ok && data.lastTs > lastTs) {
+            lastTs = data.lastTs;
+          }
+        }
+      } catch { /* silent fail — polling, bukan critical path */ }
+    };
+    poll(); // initial poll
+    const interval = setInterval(poll, 15_000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [fetchConvos]);
+
   // ── Fetch messages per phone ───────────────────────────────────────────────
   const fetchMessages = useCallback(async (phone: string) => {
     const res = await fetch(`/api/messages/${encodeURIComponent(phone)}`, { cache: "no-store" });
