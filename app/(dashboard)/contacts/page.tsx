@@ -131,6 +131,170 @@ function AddContactModal({
 }
 
 // ============================================================
+// Modal Import Kontak dari WA Bridge
+// ============================================================
+type WaBridgeContact = { jid: string; phone: string; name: string | null; isGroup: boolean };
+
+function ImportWaModal({
+  onClose,
+  onImported,
+}: {
+  onClose: () => void;
+  onImported: (count: number) => void;
+}) {
+  const [step, setStep] = useState<"fetch" | "preview" | "importing" | "done">("fetch");
+  const [waContacts, setWaContacts] = useState<WaBridgeContact[]>([]);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [error, setError] = useState<string | null>(null);
+  const [imported, setImported] = useState(0);
+
+  // Fetch dari VPS bridge
+  const fetchContacts = async () => {
+    setStep("fetch");
+    setError(null);
+    try {
+      const res = await fetch("/api/wa/contacts", { cache: "no-store" });
+      const data = await res.json() as { ok: boolean; contacts?: WaBridgeContact[]; reason?: string };
+      if (!data.ok) throw new Error(data.reason ?? "Gagal ambil kontak dari bridge");
+      const contacts = (data.contacts ?? []).filter((c) => !c.isGroup);
+      setWaContacts(contacts);
+      // Select semua by default
+      setSelected(new Set(contacts.map((c) => c.phone)));
+      setStep("preview");
+    } catch (e) {
+      setError((e as Error).message);
+      setStep("fetch");
+    }
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      if (cancelled) return;
+      await fetchContacts();
+    };
+    void run();
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const toggleAll = () => {
+    if (selected.size === waContacts.length) setSelected(new Set());
+    else setSelected(new Set(waContacts.map((c) => c.phone)));
+  };
+
+  const toggle = (phone: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(phone)) next.delete(phone);
+      else next.add(phone);
+      return next;
+    });
+  };
+
+  const handleImport = async () => {
+    setStep("importing");
+    let count = 0;
+    for (const contact of waContacts.filter((c) => selected.has(c.phone))) {
+      try {
+        const res = await fetch("/api/contacts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: contact.name || `+${contact.phone}`,
+            phone: contact.phone,
+            status: "lead",
+            source: "wa-import",
+          }),
+        });
+        if (res.ok) count++;
+      } catch { /* skip */ }
+    }
+    setImported(count);
+    setStep("done");
+    onImported(count);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
+      <div className="w-full max-w-lg rounded-2xl border border-edge bg-surface p-6 shadow-2xl">
+        <div className="mb-5 flex items-center justify-between">
+          <h2 className="text-base font-bold">Import Kontak dari WA</h2>
+          <button onClick={onClose} className="text-muted hover:text-slate-200">✕</button>
+        </div>
+
+        {/* Loading */}
+        {step === "fetch" && !error && (
+          <p className="text-sm text-muted py-8 text-center">Mengambil kontak dari WA Bridge...</p>
+        )}
+
+        {/* Error */}
+        {error && (
+          <div className="space-y-3">
+            <p className="text-sm text-danger">⚠ {error}</p>
+            <p className="text-xs text-muted">Pastikan endpoint /contacts sudah ditambah ke VPS bridge.</p>
+            <Button onClick={fetchContacts} size="sm">Coba lagi</Button>
+          </div>
+        )}
+
+        {/* Preview */}
+        {step === "preview" && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between text-xs text-muted">
+              <span>{waContacts.length} kontak ditemukan</span>
+              <button onClick={toggleAll} className="text-accent hover:underline">
+                {selected.size === waContacts.length ? "Batal semua" : "Pilih semua"}
+              </button>
+            </div>
+
+            <div className="max-h-72 overflow-y-auto space-y-1 rounded-xl border border-edge p-2">
+              {waContacts.length === 0 && (
+                <p className="text-xs text-muted text-center py-4">Tidak ada kontak WA personal.</p>
+              )}
+              {waContacts.map((c) => (
+                <label key={c.phone} className="flex items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-white/5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selected.has(c.phone)}
+                    onChange={() => toggle(c.phone)}
+                    className="rounded"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{c.name || `+${c.phone}`}</p>
+                    <p className="text-xs text-muted">{c.phone}</p>
+                  </div>
+                </label>
+              ))}
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <Button onClick={handleImport} disabled={selected.size === 0} className="flex-1">
+                Import {selected.size} Kontak
+              </Button>
+              <Button variant="ghost" onClick={onClose} className="flex-1">Batal</Button>
+            </div>
+          </div>
+        )}
+
+        {/* Importing */}
+        {step === "importing" && (
+          <p className="text-sm text-muted py-8 text-center">Mengimport {selected.size} kontak...</p>
+        )}
+
+        {/* Done */}
+        {step === "done" && (
+          <div className="space-y-4 text-center py-4">
+            <p className="text-2xl">✅</p>
+            <p className="text-sm font-medium">{imported} kontak berhasil diimport!</p>
+            <Button onClick={onClose} className="w-full">Tutup</Button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
 // Modal Kirim WA
 // ============================================================
 function SendWaModal({
@@ -223,6 +387,7 @@ export default function ContactsPage() {
   const [showAdd, setShowAdd] = useState(false);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [sendWaContact, setSendWaContact] = useState<{ name: string; phone: string } | null>(null);
+  const [showImportWa, setShowImportWa] = useState(false);
 
   // Re-fetch setiap kali query/filter berubah
   useEffect(() => {
@@ -325,14 +490,32 @@ export default function ContactsPage() {
           onClose={() => setSendWaContact(null)}
         />
       )}
+      {showImportWa && (
+        <ImportWaModal
+          onClose={() => setShowImportWa(false)}
+          onImported={(count) => {
+            setShowImportWa(false);
+            if (count > 0) {
+              // Reload contacts list
+              setFilter("semua");
+              setQuery("");
+            }
+          }}
+        />
+      )}
 
       <PageHeader
         title="Kontak"
         subtitle={`${total} kontak terdaftar`}
         actions={
-          <Button onClick={() => setShowAdd(true)} size="sm">
-            + Tambah Kontak
-          </Button>
+          <div className="flex gap-2">
+            <Button onClick={() => setShowImportWa(true)} size="sm" variant="ghost">
+              ↓ Import WA
+            </Button>
+            <Button onClick={() => setShowAdd(true)} size="sm">
+              + Tambah Kontak
+            </Button>
+          </div>
         }
       />
 
