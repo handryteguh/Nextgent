@@ -223,7 +223,7 @@ function ImportWaModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
       <div className="w-full max-w-lg rounded-2xl border border-edge bg-surface p-6 shadow-2xl">
         <div className="mb-5 flex items-center justify-between">
-          <h2 className="text-base font-bold">Import Kontak dari WA</h2>
+          <h2 className="text-base font-bold">Sinkronisasi Kontak WA</h2>
           <button onClick={onClose} className="text-muted hover:text-slate-200">✕</button>
         </div>
 
@@ -517,7 +517,7 @@ export default function ContactsPage() {
         actions={
           <div className="flex gap-2">
             <Button onClick={() => setShowImportWa(true)} size="sm" variant="ghost">
-              ↓ Import WA
+              ⟳ Sinkronisasi WA
             </Button>
             <Button onClick={() => setShowAdd(true)} size="sm">
               + Tambah Kontak
