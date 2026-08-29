@@ -62,6 +62,9 @@ export async function GET(req: NextRequest) {
     const text = m.text?.trim();
     if (!phone || !text) continue;
 
+    // Skip nomor yang bukan format WA valid (harus 628xxx, minimal 10 digit)
+    if (!phone.startsWith("62") || phone.length < 10) continue;
+
     // Dedup
     if (m.id) {
       const existing = db.select({ id: messages.id })
