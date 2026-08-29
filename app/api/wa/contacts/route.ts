@@ -31,13 +31,33 @@ export async function GET() {
 
     const data = await res.json().catch(() => ({})) as {
       count?: number;
-      contacts?: WaBridgeContact[];
+      contacts?: Array<{
+        jid?: string;
+        phone?: string;
+        lid?: string;
+        name?: string | null;
+        isGroup?: boolean;
+      }>;
     };
+
+    // Normalize — VPS bisa kirim format {jid, lid, name} atau {jid, phone, name, isGroup}
+    const raw = data.contacts ?? [];
+    const contacts = raw.map((c) => {
+      const jid = c.jid ?? "";
+      const phone = c.phone ?? jid.replace("@s.whatsapp.net", "").replace("@g.us", "");
+      const isGroup = c.isGroup ?? jid.endsWith("@g.us");
+      return {
+        jid,
+        phone,
+        name: c.name ?? null,
+        isGroup,
+      };
+    }).filter((c) => !c.isGroup && c.phone.startsWith("62") && c.phone.length >= 10);
 
     return NextResponse.json({
       ok: true,
-      count: data.count ?? 0,
-      contacts: data.contacts ?? [],
+      count: contacts.length,
+      contacts,
     });
   } catch (e) {
     return NextResponse.json({ ok: false, reason: (e as Error).message }, { status: 502 });
