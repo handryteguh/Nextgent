@@ -1,130 +1,111 @@
-# Mina-UI — WhatsApp CRM Dashboard
+# Mina-UI — WhatsApp CRM Dashboard DapurMina
 
-Dashboard CRM berbasis WhatsApp untuk DapurMina. Dibangun dengan Next.js App Router, SQLite, dan Tailwind CSS. Jalan dari **lokal** — bukan VPS.
+Dashboard CRM berbasis Next.js untuk mengelola komunikasi WhatsApp bisnis DapurMina via WA Bridge mina-cs.
 
 ## Stack
 
-| Layer | Tech |
-|---|---|
-| Framework | Next.js 16.3 (Turbopack) + React 19 |
-| Styling | Tailwind CSS 4 |
-| Database | SQLite + Drizzle ORM (better-sqlite3) |
-| Auth | PIN login (scrypt hash) + HMAC session cookie |
-| WA Bridge | Hermes WA Bridge `mina-cs` di VPS (port 3002, public IP) |
-
-## Cara Jalankan
-
-```bash
-# Install dependencies
-npm install
-
-# Jalankan dev server (bind ke semua interface untuk akses TailScale)
-npm run dev
-# → http://localhost:3001
-# → http://100.119.12.45:3001 (dari HP via TailScale)
-```
-
-## Akses dari HP
-
-Pastikan TailScale aktif di laptop + HP dengan akun yang sama, lalu buka:
-```
-http://100.119.12.45:3001
-```
-
-Allow firewall Windows (jalankan PowerShell as Admin):
-```powershell
-netsh advfirewall firewall add rule name="Mina-UI-3001" dir=in action=allow protocol=TCP localport=3001
-```
-
-## Login
-
-PIN default: `1234`
-
-## Environment Variables
-
-Buat file `.env.local` di root project:
-
-```env
-# Session
-SESSION_SECRET=your-random-secret-here
-
-# WhatsApp Bridge (Hermes mina-cs di VPS, port 3002)
-HERMES_VPS_URL=http://43.157.212.210:3002
-HERMES_VPS_TOKEN=your-bridge-token
-
-# Webhook secret (untuk validasi payload dari Hermes VPS)
-WEBHOOK_SECRET=your-webhook-secret
-
-# API secret (internal)
-API_SECRET_KEY=your-api-secret
-```
-
-## Database
-
-SQLite di `data/mina-ui.db`. Migrate dengan:
-
-```bash
-node db/migrate.js
-```
+- **Next.js 16.3.0** + React 19 + TypeScript
+- **Tailwind CSS 4** — dark theme custom
+- **SQLite** via better-sqlite3 + Drizzle ORM
+- **WA Bridge VPS** — REST API di `43.157.212.210:3002`
 
 ## Fitur
 
 | Halaman | Fitur |
-|---|---|
-| Dashboard | KPI cards, WA status, summary |
-| Contacts | CRUD kontak, import CSV |
-| Follow-up | Sequence FU1→FU2→FU3 otomatis |
-| Tasks | Task management |
-| Deals | Pipeline deals |
-| Inbox | Pesan WA masuk |
-| Automation | Keyword rules + AI CS log |
-| Reports | Laporan aktivitas |
-| Logs | Activity log |
-| Settings | Follow-up delay, TailScale config, ganti PIN |
+|---------|-------|
+| `/` Dashboard | WA Bridge status banner (uptime, queue, mem), KPI cards |
+| `/inbox` | Real-time conversation list (poll 3s), chat history, send WA |
+| `/contacts` | CRUD kontak, Sinkronisasi WA (649 kontak dari bridge), Send WA |
+| `/logs` | Live WA bridge logs, filter level, auto-refresh 5s |
+| `/followup` | Follow-up reminder (coming soon) |
+| `/deals` | Pipeline deals (coming soon) |
 
 ## Arsitektur WA Bridge
 
 ```
-Customer WA
-    ↓
-Hermes mina-cs WA Bridge (VPS 43.157.212.210:3002)
-    ↓ REST API (Bearer token)
-Mina-UI API Routes (lokal)
-    ├── GET  /api/wa/status   → pull status & uptime bridge
-    ├── POST /api/wa/send     → push kirim pesan WA
-    ├── GET  /api/wa/logs     → pull logs bridge (?n=N)
-    └── POST /api/webhook/wa  → terima pesan masuk dari bridge
-    ↓
-SQLite DB → auto follow-up scheduler
+Customer WA → nomor mina-cs (QR linked device)
+                    ↓
+             bridge.js (port 3000)
+             filter: @s.whatsapp.net only
+             append → wa-inbound.log (NDJSON)
+                    ↓
+             server.js (port 3002) REST API
+                    ↓
+             Mina-UI polling tiap 3 detik
+             /api/wa/poll → simpan DB → display inbox
 ```
 
-## WA Bridge API Endpoints
+## Setup
 
-| Route Mina-UI | Method | Fungsi |
-|---|---|---|
-| `/api/wa/status` | GET | Pull status koneksi bridge + uptime |
-| `/api/wa/send` | POST | Push kirim pesan WA `{ phone, message }` |
-| `/api/wa/logs` | GET | Pull logs VPS `?n=20` |
-| `/api/webhook/wa` | POST | Terima pesan masuk dari bridge |
-
-## Scripts
+### 1. Install dependencies
 
 ```bash
-npm run dev      # dev server port 3001
-npm run build    # production build
-npm run lint     # ESLint check
+npm install
 ```
+
+### 2. Setup environment
+
+Buat file `.env.local`:
+
+```env
+HERMES_VPS_URL=http://43.157.212.210:3002
+HERMES_VPS_TOKEN=<token>
+AUTH_PIN=<pin-login>
+```
+
+### 3. Init database
+
+```bash
+npm run db:push
+```
+
+### 4. Jalankan dev server
+
+```bash
+npm run dev
+# → http://localhost:3001
+```
+
+## Auto-start Windows
+
+File VBS sudah dibuat di `shell:startup\mina-ui-dev.vbs` — dev server otomatis jalan saat Windows boot (hapus `.next` cache dulu biar Turbopack fresh).
+
+## API Routes
+
+| Route | Method | Deskripsi |
+|-------|--------|-----------|
+| `/api/auth/login` | POST | Login dengan PIN |
+| `/api/summary` | GET | KPI + WA bridge status |
+| `/api/messages` | GET | List conversations |
+| `/api/messages` | POST | Kirim pesan via WA bridge |
+| `/api/messages/[phone]` | GET | History chat per nomor |
+| `/api/contacts` | GET/POST | CRUD kontak |
+| `/api/wa/status` | GET | Status WA bridge |
+| `/api/wa/poll` | GET | Pull pesan baru dari VPS |
+| `/api/wa/send` | POST | Kirim WA via bridge |
+| `/api/wa/logs` | GET | Bridge logs |
+| `/api/wa/contacts` | GET | Kontak dari WA bridge |
 
 ## Commit History
 
 | Commit | Fitur |
-|---|---|
-| `latest` | WA Bridge: fix endpoints + tambah /api/wa/logs route |
-| `8b08886` | Automation: keyword rules + AI log + Hermes bridge |
-| `65049e2` | Logs: activity_logs DB + API + UI |
-| `69f815e` | Settings: TailScale card + IP/port config |
-| `cdb1d1a` | Dev server bind 0.0.0.0:3001 |
-| `ccd208b` | Fix: tailscale_ip + tailscale_port ke ALLOWED_KEYS |
-| `020b787` | Fix: login + TailScale settings auto-load |
-| `2b390ac` | Fix: login redirect setTimeout |
-| `730a7a2` | Settings: tombol Test Koneksi WA Bridge |
+|--------|-------|
+| `dfa92ea` | Kirim WA dari Contacts & Inbox + dynamic banner |
+| `f566831` | Poll pesan masuk WA dari VPS bridge |
+| `495b717` | Fix route messages/[phone] 500 error |
+| `cb659c0` | Real-time inbox poll 3s |
+| `7d90a62` | Fix Next.js 16.3 stable — turbopack config |
+| `0b8cf4b` | Fix filter phone non-628xxx di poll |
+| `65489f7` | Log Viewer /logs — live bridge logs |
+| `a5e180b` | Sinkronisasi Kontak WA — modal preview + bulk import |
+| `c98c1c1` | Fix normalize VPS contacts response |
+| `16588e3` | Fix import skip duplikat (409), summary baru vs di-skip |
+| `fb585d8` | UX: rename Import WA → Sinkronisasi WA |
+| `4808714` | Fix poll direction ikut dari VPS (out/in) |
+
+## Catatan
+
+- **Nomor mina-cs** = QR linked device (Skenario B) — pesan dari HP primary tidak lewat bridge
+- **Inbox** = CS dashboard utama — semua reply customer dari sini, bukan dari HP langsung
+- **Nama kontak** = null saat import, auto-enrich saat kontak kirim pesan masuk
+- **Filter bridge** = hanya `@s.whatsapp.net` (skip `@lid`, `@g.us`, `@newsletter`, `@broadcast`)

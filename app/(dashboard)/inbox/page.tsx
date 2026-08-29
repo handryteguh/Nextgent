@@ -149,7 +149,8 @@ export default function InboxPage() {
   // ── Poll pesan masuk dari VPS bridge (tiap 3 detik — real-time) ─────────────
   useEffect(() => {
     let cancelled = false;
-    let lastTs = 0;
+    // Mulai dari 5 menit lalu biar gak ketinggalan pesan yang baru masuk
+    let lastTs = Date.now() - 5 * 60 * 1000;
     const poll = async () => {
       try {
         const res = await fetch(`/api/wa/poll?since=${lastTs}&limit=50`, { cache: "no-store" });
