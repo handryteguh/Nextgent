@@ -134,6 +134,18 @@ export default function InboxPage() {
     return () => clearInterval(interval);
   }, [fetchConvos]);
 
+  // ── Fetch messages per phone ───────────────────────────────────────────────
+  const fetchMessages = useCallback(async (phone: string) => {
+    const res = await fetch(`/api/messages/${encodeURIComponent(phone)}`, { cache: "no-store" });
+    if (res.ok) {
+      const data = await res.json();
+      setMessages(data.data ?? []);
+      if (data.contact) setActiveContact({ name: data.contact.name, phone: data.contact.phone });
+      else setActiveContact(null);
+      await fetchConvos(); // refresh unread badges
+    }
+  }, [fetchConvos]);
+
   // ── Poll pesan masuk dari VPS bridge (tiap 3 detik — real-time) ─────────────
   useEffect(() => {
     let cancelled = false;
@@ -146,7 +158,6 @@ export default function InboxPage() {
           if (data.ok && data.saved > 0) {
             lastTs = data.lastTs;
             await fetchConvos();
-            // Kalau chat aktif sedang terbuka, auto-refresh messages-nya juga
             setActivePhone((prev) => {
               if (prev) void fetchMessages(prev);
               return prev;
@@ -161,18 +172,6 @@ export default function InboxPage() {
     const interval = setInterval(poll, 3_000);
     return () => { cancelled = true; clearInterval(interval); };
   }, [fetchConvos, fetchMessages]);
-
-  // ── Fetch messages per phone ───────────────────────────────────────────────
-  const fetchMessages = useCallback(async (phone: string) => {
-    const res = await fetch(`/api/messages/${encodeURIComponent(phone)}`, { cache: "no-store" });
-    if (res.ok) {
-      const data = await res.json();
-      setMessages(data.data ?? []);
-      if (data.contact) setActiveContact({ name: data.contact.name, phone: data.contact.phone });
-      else setActiveContact(null);
-      await fetchConvos(); // refresh unread badges
-    }
-  }, [fetchConvos]);
 
   useEffect(() => {
     if (!activePhone) return;
