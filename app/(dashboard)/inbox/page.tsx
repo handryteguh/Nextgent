@@ -56,8 +56,20 @@ function avatarColor(phone: string): string {
   return avatarColors[idx];
 }
 
-// ── WA Offline Banner ─────────────────────────────────────────────────────────
-function WaOfflineBanner() {
+// ── WA Status Banner (dinamis) ────────────────────────────────────────────────
+function WaStatusBanner({ connected }: { connected: boolean | null }) {
+  if (connected === null) return null; // loading, jangan tampil
+  if (connected) {
+    return (
+      <div className="mb-4 flex items-center gap-3 rounded-xl border border-success/30 bg-success/10 px-4 py-3">
+        <span className="relative flex h-2 w-2 shrink-0">
+          <span className="absolute inline-flex h-2 w-2 animate-ping rounded-full bg-success opacity-75" />
+          <span className="relative inline-flex h-2 w-2 rounded-full bg-success" />
+        </span>
+        <p className="text-sm font-semibold text-success">Bridge WA terhubung — pesan keluar aktif</p>
+      </div>
+    );
+  }
   return (
     <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-warning/30 bg-warning/10 px-4 py-3">
       <div className="flex items-center gap-3">
@@ -83,7 +95,25 @@ export default function InboxPage() {
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [waConnected, setWaConnected] = useState<boolean | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  // ── Fetch WA status ───────────────────────────────────────────────────────
+  useEffect(() => {
+    let cancelled = false;
+    const checkWa = async () => {
+      try {
+        const res = await fetch("/api/wa/status", { cache: "no-store" });
+        if (res.ok && !cancelled) {
+          const data = await res.json();
+          setWaConnected(data.connected ?? false);
+        }
+      } catch { if (!cancelled) setWaConnected(false); }
+    };
+    checkWa();
+    const interval = setInterval(checkWa, 30_000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, []);
 
   // ── Fetch convos ──────────────────────────────────────────────────────────
   const fetchConvos = useCallback(async () => {
@@ -176,7 +206,7 @@ export default function InboxPage() {
         }
       />
 
-      <WaOfflineBanner />
+      <WaStatusBanner connected={waConnected} />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         {/* ── Chat list ────────────────────────────────────────────────────── */}

@@ -38,12 +38,12 @@ export async function GET() {
   return NextResponse.json({ data: rows });
 }
 
-// POST /api/messages — kirim pesan keluar (manual, bukan via bridge)
+// POST /api/messages — kirim pesan keluar via WA bridge, simpan ke DB
 export async function POST(req: NextRequest) {
   if (!(await isAuthed())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json().catch(() => null);
-  const phone = body?.phone?.trim();
+  const phone = body?.phone?.replace(/[^0-9]/g, "");
   const text = body?.text?.trim();
   if (!phone || !text) return NextResponse.json({ error: "phone dan text wajib diisi" }, { status: 400 });
 
@@ -60,5 +60,33 @@ export async function POST(req: NextRequest) {
     createdAt: now,
   }).returning();
 
-  return NextResponse.json({ data: msg }, { status: 201 });
+  // Kirim via WA bridge (fire-and-forget, error tidak blok response DB)
+  const vpsUrl = process.env.HERMES_VPS_URL ?? "";
+  const vpsToken = process.env.HERMES_VPS_TOKEN ?? "";
+  let sent = false;
+  let waId: string | null = null;
+
+  if (vpsUrl && vpsToken) {
+    try {
+      const res = await fetch(`${vpsUrl}/send`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${vpsToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ phone, message: text }),
+        signal: AbortSignal.timeout(10_000),
+      });
+      const data = await res.json().catch(() => ({})) as { status?: string; messageId?: string };
+      if (data.status === "ok") {
+        sent = true;
+        waId = data.messageId ?? null;
+        await db.update(messages)
+          .set({ status: "delivered", waId })
+          .where(eq(messages.id, msg.id));
+      }
+    } catch { /* bridge error — pesan tetap tersimpan di DB */ }
+  }
+
+  return NextResponse.json({ data: { ...msg, sent, waId } }, { status: 201 });
 }

@@ -131,6 +131,87 @@ function AddContactModal({
 }
 
 // ============================================================
+// Modal Kirim WA
+// ============================================================
+function SendWaModal({
+  contact,
+  onClose,
+}: {
+  contact: { name: string; phone: string };
+  onClose: () => void;
+}) {
+  const [message, setMessage] = useState("");
+  const [status, setStatus] = useState<"idle" | "sending" | "ok" | "error">("idle");
+  const [errMsg, setErrMsg] = useState<string | null>(null);
+
+  const handleSend = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!message.trim()) return;
+    setStatus("sending");
+    setErrMsg(null);
+    try {
+      const res = await fetch("/api/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: contact.phone, text: message.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setErrMsg(data.error || "Gagal kirim"); setStatus("error"); return; }
+      setStatus(data.data?.sent ? "ok" : "error");
+      if (!data.data?.sent) setErrMsg("Pesan tersimpan tapi belum terkirim ke WA");
+    } catch {
+      setStatus("error");
+      setErrMsg("Gagal terhubung ke server");
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
+      <div className="w-full max-w-md rounded-2xl border border-edge bg-surface p-6 shadow-2xl">
+        <div className="mb-5 flex items-center justify-between">
+          <div>
+            <h2 className="text-base font-bold">Kirim WA</h2>
+            <p className="text-xs text-muted">{contact.name} · {contact.phone}</p>
+          </div>
+          <button onClick={onClose} className="text-muted hover:text-slate-200">✕</button>
+        </div>
+
+        {status === "ok" ? (
+          <div className="space-y-4">
+            <div className="flex items-center gap-3 rounded-xl border border-success/30 bg-success/10 px-4 py-3">
+              <span className="text-success">✓</span>
+              <p className="text-sm font-semibold text-success">Pesan terkirim ke WhatsApp!</p>
+            </div>
+            <Button onClick={onClose} className="w-full">Tutup</Button>
+          </div>
+        ) : (
+          <form onSubmit={handleSend} className="space-y-4">
+            <div>
+              <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-muted">Pesan *</label>
+              <textarea
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                placeholder="Tulis pesan WhatsApp di sini..."
+                rows={4}
+                required
+                className="w-full resize-none rounded-lg border border-edge bg-surface-2 px-3 py-2 text-sm text-slate-200 placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent"
+              />
+            </div>
+            {errMsg && <p className="text-xs text-danger">{errMsg}</p>}
+            <div className="flex gap-2 pt-1">
+              <Button type="submit" disabled={status === "sending" || !message.trim()} className="flex-1">
+                {status === "sending" ? "Mengirim…" : "Kirim WA"}
+              </Button>
+              <Button type="button" variant="ghost" onClick={onClose} className="flex-1">Batal</Button>
+            </div>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
 // Halaman Contacts
 // ============================================================
 export default function ContactsPage() {
@@ -141,6 +222,7 @@ export default function ContactsPage() {
   const [query, setQuery] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [sendWaContact, setSendWaContact] = useState<{ name: string; phone: string } | null>(null);
 
   // Re-fetch setiap kali query/filter berubah
   useEffect(() => {
@@ -207,13 +289,21 @@ export default function ContactsPage() {
       key: "id",
       header: "",
       render: (r) => (
-        <button
-          onClick={() => handleDelete(r.id)}
-          disabled={deleteId === r.id}
-          className="text-xs text-danger/70 hover:text-danger disabled:opacity-40"
-        >
-          {deleteId === r.id ? "…" : "Hapus"}
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setSendWaContact({ name: r.name, phone: r.phone })}
+            className="text-xs text-accent/80 hover:text-accent"
+          >
+            Kirim WA
+          </button>
+          <button
+            onClick={() => handleDelete(r.id)}
+            disabled={deleteId === r.id}
+            className="text-xs text-danger/70 hover:text-danger disabled:opacity-40"
+          >
+            {deleteId === r.id ? "…" : "Hapus"}
+          </button>
+        </div>
       ),
     },
   ];
@@ -227,6 +317,12 @@ export default function ContactsPage() {
         <AddContactModal
           onClose={() => setShowAdd(false)}
           onSaved={(c) => { setData((d) => [c, ...d]); setShowAdd(false); }}
+        />
+      )}
+      {sendWaContact && (
+        <SendWaModal
+          contact={sendWaContact}
+          onClose={() => setSendWaContact(null)}
         />
       )}
 
